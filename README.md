@@ -5,7 +5,7 @@ HTML ファイル 1 個だけでできているので、インストールもビ
 
 https://mtjwtjmuj.github.io/pico-circuitpython-block-builder
 
-![画面](docs/screenshot.png)
+![画面](/screenshot.png)
 
 ## つかいかた
 
