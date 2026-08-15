@@ -1,0 +1,2869 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PICO CIRCUITPYTHON BLOCK BUILDER — ブロックを並べて code.py を作る</title>
+<meta name="description" content="Raspberry Pi Pico の CircuitPython 用 code.py を、ブロックを並べるだけで作れるツール。インストール不要、ブラウザだけで動きます。">
+<style>
+/* ============================================================
+   PICO CIRCUITPYTHON BLOCK BUILDER — 黒レジスト + 金メッキパッドのシルク印刷を主題にした配色
+   ============================================================ */
+:root{
+  --mask:#0a0e0f;          /* ソルダーレジスト(黒) */
+  --mask-2:#101617;
+  --panel:#141c1d;
+  --raise:#1b2526;
+  --edge:#263335;
+  --edge-hi:#334547;
+  --silk:#e9f0ec;          /* シルクスクリーン白 */
+  --silk-dim:#93a5a3;
+  --silk-mute:#5f7273;
+  --gold:#d9a441;          /* 金フラッシュ */
+  --gold-soft:#8a6a2c;
+  --trace:#3fbfa0;         /* 配線パターン */
+  --signal:#63a8e8;
+  --alert:#e5544b;
+  --violet:#a98cf0;
+  --pink:#ef7fae;
+  --orange:#f08a4b;
+
+  --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular","Menlo","DejaVu Sans Mono","Consolas",monospace;
+
+  --r:3px;
+  --hdr:52px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--mask);
+  color:var(--silk);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.55;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* 基板の網目テクスチャ */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:22px 22px;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:none;cursor:pointer}
+input,select,textarea{
+  background:var(--mask-2);border:1px solid var(--edge);color:var(--silk);
+  border-radius:var(--r);padding:3px 6px;outline:none;
+}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--gold);outline-offset:1px;
+}
+input[type=number]{font-family:var(--mono)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2b3a3c;border-radius:9px}
+::-webkit-scrollbar-thumb:hover{background:#3b5052}
+
+/* ---------- ヘッダ ---------- */
+.topbar{
+  height:var(--hdr);position:relative;z-index:5;
+  display:flex;align-items:center;gap:14px;padding:0 12px;
+  background:linear-gradient(180deg,#182121,#0e1415);
+  border-bottom:1px solid var(--edge);
+}
+.brand{display:flex;align-items:center;gap:9px;flex:none}
+.chipmark{
+  width:26px;height:26px;border-radius:4px;flex:none;
+  background:linear-gradient(145deg,#2a3638,#141b1c);
+  border:1px solid var(--edge-hi);position:relative;
+}
+.chipmark::before,.chipmark::after{
+  content:"";position:absolute;left:-4px;right:-4px;height:3px;
+  background:
+    repeating-linear-gradient(90deg,var(--gold) 0 3px,transparent 3px 7px);
+  opacity:.8;
+}
+.chipmark::before{top:5px}
+.chipmark::after{bottom:5px}
+.brand h1{
+  font-size:15px;font-weight:800;letter-spacing:.22em;
+  font-family:var(--mono);color:var(--silk);
+}
+.brand .sub{font-size:9.5px;letter-spacing:.18em;color:var(--gold);font-family:var(--mono)}
+.topbar .spacer{flex:1}
+.projname{
+  background:var(--mask);border:1px solid var(--edge);border-radius:var(--r);
+  padding:5px 9px;min-width:150px;max-width:260px;font-size:13px;
+}
+.tbtn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 11px;border:1px solid var(--edge-hi);border-radius:var(--r);
+  background:linear-gradient(180deg,#1e2829,#161e1f);
+  font-size:12px;letter-spacing:.04em;color:var(--silk);white-space:nowrap;
+}
+.tbtn:hover{border-color:var(--gold-soft);color:#fff}
+.tbtn.primary{
+  border-color:var(--gold-soft);color:#1a1206;
+  background:linear-gradient(180deg,#e9bc5c,#c88f2c);font-weight:700;
+}
+.tbtn.primary:hover{background:linear-gradient(180deg,#f3c76c,#d69c33)}
+
+/* ---------- レイアウト ---------- */
+.stage{
+  position:relative;z-index:1;
+  height:calc(100% - var(--hdr));
+  display:grid;grid-template-columns:246px minmax(0,1fr) 400px;
+}
+.col{display:flex;flex-direction:column;min-height:0;min-width:0}
+.col.left{border-right:1px solid var(--edge);background:var(--mask-2)}
+.col.mid{background:var(--mask)}
+.col.right{border-left:1px solid var(--edge);background:var(--mask-2)}
+
+.colhead{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:0 10px;height:34px;border-bottom:1px solid var(--edge);
+  background:var(--panel);
+}
+.colhead h2{
+  font-size:10px;font-weight:700;letter-spacing:.2em;font-family:var(--mono);
+  color:var(--silk-dim);text-transform:uppercase;
+}
+.colhead .jp{font-size:11px;color:var(--silk-mute);letter-spacing:.06em}
+.colbody{flex:1;overflow-y:auto;overflow-x:hidden}
+
+/* ---------- パレット ---------- */
+.pal-tabs{display:flex;flex:none;border-bottom:1px solid var(--edge);background:var(--mask)}
+.pal-tabs button{
+  flex:1;padding:8px 4px;font-size:11.5px;letter-spacing:.08em;color:var(--silk-mute);
+  border-bottom:2px solid transparent;
+}
+.pal-tabs button.on{color:var(--gold);border-bottom-color:var(--gold);background:var(--panel)}
+.palsearch{padding:8px;border-bottom:1px solid var(--edge)}
+.palsearch input{width:100%;padding:5px 8px;font-size:12px}
+.palgroup{padding:9px 8px 3px}
+.palgroup h3{
+  font-size:9.5px;letter-spacing:.19em;font-family:var(--mono);color:var(--silk-mute);
+  padding:0 2px 5px;border-bottom:1px dashed var(--edge);margin-bottom:6px;
+}
+.palitem{
+  display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:6px 7px;margin-bottom:3px;border-radius:var(--r);
+  border:1px solid transparent;background:var(--panel);cursor:grab;
+  border-left:3px solid var(--c,var(--gold));
+}
+.palitem:hover{background:var(--raise);border-color:var(--edge-hi);border-left-color:var(--c,var(--gold))}
+.palitem .ic{width:17px;text-align:center;font-size:14px;flex:none;filter:saturate(.85)}
+.palitem .tx{flex:1;min-width:0}
+.palitem .tx b{display:block;font-size:12.5px;font-weight:600;line-height:1.3}
+.palitem .tx small{display:block;font-size:10px;color:var(--silk-mute);line-height:1.35;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- 中央: 部品リスト & プログラム ---------- */
+.midscroll{padding:10px 12px 90px}
+.sect{margin-bottom:16px}
+.secthead{
+  display:flex;align-items:center;gap:8px;margin-bottom:7px;
+}
+.secthead .bar{
+  flex:none;width:4px;height:15px;border-radius:2px;background:var(--gold);
+}
+.secthead h3{font-size:12px;letter-spacing:.12em;font-weight:700}
+.secthead .note{font-size:10.5px;color:var(--silk-mute);letter-spacing:.04em}
+.secthead .spacer{flex:1}
+
+.emptyslot{
+  border:1px dashed var(--edge-hi);border-radius:var(--r);
+  padding:13px 10px;text-align:center;color:var(--silk-mute);font-size:11.5px;
+  background:repeating-linear-gradient(45deg,transparent 0 6px,rgba(255,255,255,.012) 6px 12px);
+}
+
+/* 部品カード */
+.partcard{
+  border:1px solid var(--edge);border-radius:var(--r);background:var(--panel);
+  margin-bottom:6px;border-left:3px solid var(--c,var(--gold));
+}
+.partcard .ph{display:flex;align-items:center;gap:8px;padding:6px 8px}
+.partcard .ph .ic{font-size:15px}
+.partcard .ph .nm{
+  font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--c,var(--gold));
+  background:var(--mask);border:1px solid var(--edge);border-radius:var(--r);
+  padding:2px 5px;width:110px;
+}
+.partcard .ph .ty{font-size:11.5px;color:var(--silk-dim);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.partcard .pb{
+  display:flex;flex-wrap:wrap;gap:5px 10px;padding:0 8px 7px 8px;align-items:center;
+}
+.fld{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--silk-dim)}
+.fld > span{white-space:nowrap}
+.fld select,.fld input{font-size:11.5px;padding:2px 5px}
+.fld select{font-family:var(--mono)}
+.pinsel{min-width:74px}
+.iconbtn{
+  width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:var(--r);color:var(--silk-mute);font-size:13px;flex:none;line-height:1;
+}
+.iconbtn:hover{background:var(--raise);color:var(--silk)}
+.iconbtn.del:hover{background:#3a1b19;color:var(--alert)}
+
+/* ブロック */
+.blk{
+  position:relative;border:1px solid var(--edge);border-radius:var(--r);
+  background:var(--panel);border-left:3px solid var(--c,var(--gold));
+  margin:0 0 3px 0;
+}
+.blk.sel{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold-soft) inset}
+.blk.dragging{opacity:.35}
+.blk .row{display:flex;align-items:center;gap:5px;padding:4px 6px;flex-wrap:wrap;min-height:31px}
+.blk .grip{cursor:grab;color:var(--silk-mute);font-size:12px;flex:none;letter-spacing:-2px;user-select:none}
+.blk .ic{font-size:13px;flex:none}
+.blk .lab{font-size:12.5px;white-space:nowrap}
+.blk .tools{margin-left:auto;display:flex;gap:1px;flex:none}
+.blk select,.blk input{font-size:11.5px;padding:2px 5px;max-width:200px}
+.blk input[type=number]{width:66px}
+.blk input[type=text]{min-width:90px}
+.blk select{max-width:190px}
+.blk .unit{font-size:11px;color:var(--silk-mute)}
+.slot{margin:0 0 3px 16px;padding-left:9px;border-left:1px dashed var(--edge-hi)}
+.slotlab{font-size:10px;color:var(--silk-mute);letter-spacing:.12em;padding:1px 0 2px 2px}
+
+.dz{height:5px;margin:-1px 0;border-radius:3px;transition:none}
+.dz.over{height:16px;background:var(--gold);opacity:.45;margin:2px 0}
+
+/* ---------- 右カラム ---------- */
+.rtabs{display:flex;flex:none;border-bottom:1px solid var(--edge);background:var(--mask);overflow-x:auto}
+.rtabs button{
+  padding:8px 11px;font-size:11.5px;white-space:nowrap;color:var(--silk-mute);
+  border-bottom:2px solid transparent;letter-spacing:.06em;
+}
+.rtabs button.on{color:var(--gold);border-bottom-color:var(--gold);background:var(--panel)}
+.rpane{display:none;flex:1;min-height:0;flex-direction:column}
+.rpane.on{display:flex}
+
+.codebar{
+  flex:none;display:flex;align-items:center;gap:6px;padding:6px 9px;
+  border-bottom:1px solid var(--edge);background:var(--panel);font-size:10.5px;
+  color:var(--silk-mute);font-family:var(--mono);
+}
+.codebar .spacer{flex:1}
+.minibtn{
+  padding:3px 8px;border:1px solid var(--edge-hi);border-radius:var(--r);
+  font-size:11px;color:var(--silk-dim);background:var(--mask);font-family:var(--sans);
+}
+.minibtn:hover{color:var(--silk);border-color:var(--gold-soft)}
+pre.code{
+  flex:1;overflow:auto;margin:0;padding:10px 12px 40px;
+  font-family:var(--mono);font-size:11.7px;line-height:1.62;
+  white-space:pre;tab-size:4;background:#080c0d;
+}
+.k{color:var(--violet)}   /* キーワード */
+.s{color:var(--trace)}    /* 文字列 */
+.n{color:var(--orange)}   /* 数値 */
+.c{color:#4e6163;font-style:italic} /* コメント */
+.f{color:var(--signal)}   /* 関数・属性 */
+.b{color:var(--gold)}     /* 組み込み */
+
+.rbody{flex:1;overflow-y:auto;padding:11px 12px 60px}
+.card{
+  border:1px solid var(--edge);border-radius:var(--r);background:var(--panel);
+  padding:9px 10px;margin-bottom:9px;
+}
+.card h4{
+  font-size:11px;letter-spacing:.14em;color:var(--gold);margin-bottom:6px;
+  font-family:var(--mono);display:flex;align-items:center;gap:6px;
+}
+.card p{font-size:12px;color:var(--silk-dim);margin-bottom:4px}
+.card ul{margin:0 0 2px 16px;font-size:12px;color:var(--silk-dim)}
+.card li{margin-bottom:2px}
+.kv{display:flex;gap:7px;font-size:11.5px;padding:2px 0;border-bottom:1px dashed #1e2a2b}
+.kv:last-child{border-bottom:none}
+.kv b{font-family:var(--mono);color:var(--silk);font-weight:600;flex:none;min-width:64px}
+.kv span{color:var(--silk-dim)}
+code.inl{font-family:var(--mono);background:var(--mask);border:1px solid var(--edge);
+  border-radius:2px;padding:0 4px;font-size:11px;color:var(--gold)}
+
+.warnbox{
+  border:1px solid #5a2f2b;background:#20100f;border-radius:var(--r);
+  padding:7px 9px;margin-bottom:8px;font-size:11.5px;color:#f0a49e;
+}
+.warnbox b{color:var(--alert)}
+.errbox{
+  border:1px solid var(--alert);background:#2a0f0d;border-radius:var(--r);
+  padding:8px 10px;margin-bottom:8px;font-size:11.5px;color:#ffc9c4;
+  box-shadow:0 0 0 1px rgba(229,84,75,.18) inset;
+}
+.errbox b{color:#ff8078;letter-spacing:.04em}
+.errbox p{color:#e59b95}
+button.blocked{opacity:.5;border-color:#5a2f2b !important}
+.okbox{
+  border:1px solid #24463d;background:#0f1b18;border-radius:var(--r);
+  padding:7px 9px;margin-bottom:8px;font-size:11.5px;color:#8fd8c2;
+}
+
+/* ---------- ピン配置ボード ---------- */
+.boardwrap{display:flex;justify-content:center;padding:6px 0 12px}
+.pcb{
+  position:relative;width:272px;border-radius:9px;
+  background:linear-gradient(160deg,#132321,#0b1413 60%);
+  border:1px solid #2b3d3a;padding:26px 0 20px;
+  box-shadow:0 8px 26px rgba(0,0,0,.6),0 0 0 1px rgba(217,164,65,.09);
+}
+.pcb .usb{
+  position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+  width:44px;height:13px;background:linear-gradient(180deg,#b9c2c4,#7c8a8c);
+  border-radius:2px 2px 0 0;
+}
+.pcb .chip{
+  position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);z-index:0;
+  width:60px;height:60px;border-radius:4px;
+  background:linear-gradient(150deg,#232c2d,#12191a);border:1px solid #35494a;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-family:var(--mono);font-size:8px;letter-spacing:.1em;color:#5d7275;line-height:1.5;
+}
+.pcb .silk{
+  position:absolute;bottom:5px;left:0;right:0;text-align:center;
+  font-family:var(--mono);font-size:8px;letter-spacing:.22em;color:#4b6062;
+}
+.pinrows{display:grid;grid-template-columns:1fr 1fr;gap:0 44px;padding:0 4px}
+.pinrow{display:flex;align-items:center;gap:4px;height:15px;font-size:9px;font-family:var(--mono)}
+.pinrow.r{flex-direction:row-reverse}
+.pad{
+  width:15px;height:11px;border-radius:2px;flex:none;
+  background:linear-gradient(180deg,#c9a24a,#8d6d27);border:1px solid #5d4718;
+  display:flex;align-items:center;justify-content:center;
+  font-size:7px;color:#241a06;font-weight:700;
+}
+.pinrow .nm{color:#8ea0a0;white-space:nowrap;flex:1;min-width:0;letter-spacing:.02em;
+  overflow:hidden;text-overflow:ellipsis}
+.pinrow.r .nm{text-align:right}
+.pinrow.pw .nm{color:#e08a7c}
+.pinrow.gnd .nm{color:#6b7c7d}
+.pinrow.used .nm{color:var(--tc,var(--trace));font-weight:700}
+.pinrow.used .pad{background:linear-gradient(180deg,var(--tc,#3fbfa0),#0d1b18);border-color:var(--tc,#3fbfa0);color:#04100d}
+.pinrow.conf .pad{background:linear-gradient(180deg,#f0796e,#5b1a15);border-color:var(--alert)}
+.pinrow.conf .nm{color:var(--alert)}
+
+.legend{display:flex;flex-wrap:wrap;gap:4px 9px;font-size:10.5px;margin-top:2px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:-1px}
+
+/* ---------- モーダル ---------- */
+.mask{
+  position:fixed;inset:0;z-index:50;background:rgba(4,7,8,.78);
+  display:none;align-items:center;justify-content:center;padding:16px;
+}
+.mask.on{display:flex}
+.modal{
+  width:min(620px,100%);max-height:84vh;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--edge-hi);border-radius:5px;
+  box-shadow:0 20px 60px rgba(0,0,0,.7);
+}
+.modal header{
+  padding:11px 14px;border-bottom:1px solid var(--edge);display:flex;align-items:center;gap:9px;
+}
+.modal header h3{font-size:13px;letter-spacing:.1em}
+.modal header .spacer{flex:1}
+.modal .mbody{padding:13px 14px;overflow-y:auto;font-size:12.5px;color:var(--silk-dim)}
+.modal .mfoot{padding:10px 14px;border-top:1px solid var(--edge);display:flex;gap:8px;justify-content:flex-end}
+.tplgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tpl{
+  text-align:left;padding:9px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  background:var(--mask-2);border-left:3px solid var(--gold);
+}
+.tpl:hover{background:var(--raise);border-color:var(--edge-hi);border-left-color:var(--gold)}
+.tpl b{display:block;font-size:12.5px;margin-bottom:2px;color:var(--silk)}
+.tpl small{font-size:10.5px;color:var(--silk-mute);line-height:1.4;display:block}
+
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(14px);
+  background:#1d2a2b;border:1px solid var(--gold-soft);border-radius:4px;
+  padding:8px 15px;font-size:12.5px;z-index:80;opacity:0;pointer-events:none;
+  transition:opacity .18s,transform .18s;box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- モバイル ---------- */
+.mobnav{display:none}
+@media (max-width:1080px){
+  .stage{grid-template-columns:212px minmax(0,1fr) 340px}
+}
+@media (max-width:900px){
+  body{overflow:auto}
+  .stage{display:block;height:calc(100% - var(--hdr) - 46px)}
+  .col{display:none;height:100%}
+  .col.show{display:flex}
+  .col.left,.col.right{border:none}
+  .mobnav{
+    display:grid;grid-template-columns:repeat(3,1fr);height:46px;flex:none;
+    border-top:1px solid var(--edge);background:var(--panel);position:relative;z-index:6;
+  }
+  .mobnav button{font-size:11px;color:var(--silk-mute);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:1px;letter-spacing:.06em}
+  .mobnav button .g{font-size:15px}
+  .mobnav button.on{color:var(--gold);background:var(--raise)}
+  .brand .sub{display:none}
+  .brand h1{font-size:12.5px;letter-spacing:.1em}
+  .topbar{gap:7px;padding:0 8px}
+  .topbar .spacer{display:none}
+  .projname{min-width:60px;flex:1;max-width:none;padding:5px 7px}
+  .tbtn{padding:6px 8px}
+  .tbtn span.t{display:none}
+  .modal{max-height:90vh}
+  .tplgrid{grid-template-columns:1fr}
+}
+@media (max-width:560px){
+  .brand h1{display:none}
+  .chipmark{width:22px;height:22px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="chipmark" aria-hidden="true"></div>
+    <div>
+      <h1>PICO CIRCUITPYTHON</h1>
+      <div class="sub">BLOCK BUILDER</div>
+    </div>
+  </div>
+
+  <input class="projname" id="projName" value="はじめてのPico" aria-label="プロジェクト名" maxlength="40">
+
+  <div class="spacer"></div>
+
+  <button class="tbtn" id="btnTemplates" title="サンプルを読み込む">📐<span class="t">サンプル</span></button>
+  <button class="tbtn" id="btnHelp" title="使い方">❓<span class="t">使い方</span></button>
+  <button class="tbtn" id="btnSave" title="プロジェクトを保存">💾<span class="t">保存</span></button>
+  <button class="tbtn" id="btnLoad" title="プロジェクトを開く">📂<span class="t">開く</span></button>
+  <button class="tbtn primary" id="btnDownload" title="code.py をダウンロード">⬇<span class="t">code.py</span></button>
+  <input type="file" id="fileInput" accept=".json,application/json" hidden>
+</header>
+
+<div class="stage">
+
+  <!-- ========== 左: パレット ========== -->
+  <div class="col left" id="colLeft">
+    <div class="colhead"><h2>PALETTE</h2><span class="jp">クリックで追加</span></div>
+    <div class="pal-tabs" id="palTabs">
+      <button data-pal="parts" class="on">🔌 部品</button>
+      <button data-pal="blocks">🧩 動作</button>
+    </div>
+    <div class="palsearch"><input id="palSearch" type="search" placeholder="さがす（例: LED, ボタン, 待つ）"></div>
+    <div class="colbody" id="palBody"></div>
+  </div>
+
+  <!-- ========== 中央: 組み立て ========== -->
+  <div class="col mid show" id="colMid">
+    <div class="colhead">
+      <h2>BUILD</h2><span class="jp">プログラムの組み立て</span>
+      <div class="spacer" style="flex:1"></div>
+      <button class="minibtn" id="btnClearProg">全部消す</button>
+    </div>
+    <div class="colbody">
+      <div class="midscroll">
+
+        <div class="sect">
+          <div class="secthead">
+            <span class="bar" style="background:var(--signal)"></span>
+            <h3>つかう部品</h3>
+            <span class="note">左のパレットから追加</span>
+            <span class="spacer"></span>
+          </div>
+          <div id="partsList"></div>
+        </div>
+
+        <div class="sect">
+          <div class="secthead">
+            <span class="bar" style="background:var(--pink)"></span>
+            <h3>おぼえておく数（変数）</h3>
+            <span class="note">カウンタや記録に</span>
+            <span class="spacer"></span>
+            <button class="minibtn" id="btnAddVar">＋ 追加</button>
+          </div>
+          <div id="varsList"></div>
+        </div>
+
+        <div class="sect">
+          <div class="secthead">
+            <span class="bar" style="background:var(--trace)"></span>
+            <h3>はじめに 1回だけ</h3>
+            <span class="note">電源を入れた直後に実行</span>
+          </div>
+          <div id="progSetup"></div>
+        </div>
+
+        <div class="sect">
+          <div class="secthead">
+            <span class="bar" style="background:var(--gold)"></span>
+            <h3>ずっとくり返す</h3>
+            <span class="note">while True: の中身</span>
+          </div>
+          <div id="progLoop"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 右: 出力 ========== -->
+  <div class="col right" id="colRight">
+    <div class="rtabs" id="rTabs">
+      <button data-pane="code" class="on">code.py</button>
+      <button data-pane="wire">配線</button>
+      <button data-pane="pins">ピン配置</button>
+      <button data-pane="libs">準備</button>
+    </div>
+
+    <div class="rpane on" id="pane-code">
+      <div class="codebar">
+        <span id="codeStat">0 行</span>
+        <span class="spacer"></span>
+        <button class="minibtn" id="btnCopy">コピー</button>
+        <button class="minibtn" id="btnDl2">ダウンロード</button>
+      </div>
+      <pre class="code" id="codeOut"></pre>
+    </div>
+
+    <div class="rpane" id="pane-wire"><div class="rbody" id="wireOut"></div></div>
+    <div class="rpane" id="pane-pins"><div class="rbody" id="pinsOut"></div></div>
+    <div class="rpane" id="pane-libs"><div class="rbody" id="libsOut"></div></div>
+  </div>
+
+</div>
+
+<nav class="mobnav" id="mobNav">
+  <button data-col="left"><span class="g">🧩</span>パレット</button>
+  <button data-col="mid" class="on"><span class="g">🛠</span>組み立て</button>
+  <button data-col="right"><span class="g">📄</span>コード</button>
+</nav>
+
+<!-- ========== モーダル ========== -->
+<div class="mask" id="modalMask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <header>
+      <h3 id="modalTitle">タイトル</h3>
+      <span class="spacer"></span>
+      <button class="iconbtn" id="modalClose" aria-label="閉じる">✕</button>
+    </header>
+    <div class="mbody" id="modalBody"></div>
+    <div class="mfoot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ============================================================================
+   PICO CIRCUITPYTHON BLOCK BUILDER  —  Raspberry Pi Pico / CircuitPython コードビルダー
+   単一HTMLファイル / 外部ライブラリなし / オフライン動作
+   ============================================================================ */
+
+/* ---------------------------------------------------------------- ピン定義 */
+const PIN_LEFT = ["GP0","GP1","GND","GP2","GP3","GP4","GP5","GND","GP6","GP7",
+                  "GP8","GP9","GND","GP10","GP11","GP12","GP13","GND","GP14","GP15"];
+const PIN_RIGHT = ["VBUS","VSYS","GND","3V3_EN","3V3(OUT)","ADC_VREF","GP28","AGND","GP27","GP26",
+                   "RUN","GP22","GND","GP21","GP20","GP19","GP18","GND","GP17","GP16"];
+
+const GP_ALL = [];
+for (let i = 0; i <= 22; i++) GP_ALL.push("GP" + i);
+GP_ALL.push("GP26", "GP27", "GP28");
+const GP_ADC = ["GP26", "GP27", "GP28"];
+
+const UART_MAP = { GP0:"UART0 TX", GP1:"UART0 RX", GP4:"UART1 TX", GP5:"UART1 RX",
+                   GP8:"UART1 TX", GP9:"UART1 RX", GP12:"UART0 TX", GP13:"UART0 RX",
+                   GP16:"UART0 TX", GP17:"UART0 RX", GP20:"UART1 TX", GP21:"UART1 RX" };
+
+function gpNum(p){ return parseInt(String(p).replace("GP",""), 10); }
+function pinI2C(p){
+  const n = gpNum(p); if (isNaN(n)) return null;
+  const bus = ((n >> 1) % 2 === 0) ? 0 : 1;
+  return "I2C" + bus + " " + (n % 2 === 0 ? "SDA" : "SCL");
+}
+/* SDA になれるピン（偶数GP） */
+function i2cSDAList(){ return GP_ALL.filter(p => /SDA$/.test(pinI2C(p) || "")); }
+/* その SDA と同じバスで組める SCL 候補 */
+function i2cPartners(sda){
+  const f = pinI2C(sda) || "";
+  if (!/SDA$/.test(f)) return [];
+  const bus = f.slice(0, 4);
+  return GP_ALL.filter(p => (pinI2C(p) || "") === bus + " SCL");
+}
+function pinSPI(p){
+  const n = gpNum(p); if (isNaN(n)) return null;
+  const bus = (Math.floor(n / 8) % 2 === 0) ? 0 : 1;
+  const fn = ["RX(MISO)","CSn","SCK","TX(MOSI)"][n % 4];
+  return "SPI" + bus + " " + fn;
+}
+function pinPWM(p){
+  const n = gpNum(p); if (isNaN(n)) return null;
+  return "PWM" + Math.floor((n % 16) / 2) + (n % 2 === 0 ? "A" : "B");
+}
+function pinFuncs(p){
+  const f = [];
+  if (GP_ADC.includes(p)) f.push("ADC" + (gpNum(p) - 26));
+  f.push(pinPWM(p)); f.push(pinI2C(p)); f.push(pinSPI(p));
+  if (UART_MAP[p]) f.push(UART_MAP[p]);
+  return f.filter(Boolean);
+}
+
+/* 部品ごとに割り当てる「ジャンパー線の色」 */
+const WIRE_COLORS = ["#f08a4b","#63a8e8","#3fbfa0","#ef7fae","#a98cf0","#d9a441",
+                     "#e5544b","#7fd4e8","#9fd45a","#e8a0d8"];
+
+/* -------------------------------------------------------------- 音階の周波数 */
+const NOTES = [
+  ["ド (C4)",262],["レ (D4)",294],["ミ (E4)",330],["ファ (F4)",349],["ソ (G4)",392],
+  ["ラ (A4)",440],["シ (B4)",494],["ド (C5)",523],["レ (D5)",587],["ミ (E5)",659],
+  ["ファ (F5)",698],["ソ (G5)",784],["ラ (A5)",880],["シ (B5)",988],["ド (C6)",1047]
+];
+
+const KEYCODES = [
+  ["Enter","ENTER"],["スペース","SPACE"],["Tab","TAB"],["Esc","ESCAPE"],["BackSpace","BACKSPACE"],
+  ["Delete","DELETE"],["↑","UP_ARROW"],["↓","DOWN_ARROW"],["←","LEFT_ARROW"],["→","RIGHT_ARROW"],
+  ["A","A"],["B","B"],["C","C"],["D","D"],["E","E"],["S","S"],["W","W"],["Z","Z"],
+  ["0","ZERO"],["1","ONE"],["2","TWO"],["3","THREE"],
+  ["F1","F1"],["F5","F5"],["F11","F11"],["Home","HOME"],["End","END"],
+  ["PageUp","PAGE_UP"],["PageDown","PAGE_DOWN"],["CapsLock","CAPS_LOCK"]
+];
+const MODIFIERS = [["なし",""],["Ctrl","CONTROL"],["Shift","SHIFT"],["Alt","ALT"],
+                   ["Windows / Command","GUI"],["Ctrl+Shift","CONTROL,SHIFT"]];
+
+/* ============================================================================
+   部品カタログ
+   ============================================================================ */
+const gpSel = (def) => ({ kind:"gp", def });
+const adcSel = (def) => ({ kind:"adc", def });
+
+const PARTS = {
+
+/* ---------------- 出力 ---------------- */
+onboard_led:{
+  name:"内蔵LED", icon:"🟢", cat:"出力", color:"--trace", base:"led_pico",
+  desc:"Pico基板の上に付いているLED。配線ゼロで試せます",
+  pins:[], opts:[],
+  imports:["board","digitalio"],
+  setup:(p,v)=>[`${v} = digitalio.DigitalInOut(board.LED)`,
+                `${v}.direction = digitalio.Direction.OUTPUT`],
+  acts:()=>["out_on","out_off","out_toggle","out_blink"],
+  reads:[],
+  wire:()=>["配線は不要です（基板上のLEDを使います）。","Pico W / Pico 2 W でもそのまま動きます。"]
+},
+
+led:{
+  name:"LED", icon:"💡", cat:"出力", color:"--orange", base:"led",
+  desc:"抵抗をつないだ普通のLED",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP15")}],
+  opts:[{k:"pwm",label:"明るさを変えられるようにする",type:"bool",def:false}],
+  imports:(p)=> p.opts.pwm ? ["board","pwmio"] : ["board","digitalio"],
+  setup:(p,v)=> p.opts.pwm
+    ? [`${v} = pwmio.PWMOut(board.${p.pins.pin}, frequency=1000, duty_cycle=0)`]
+    : [`${v} = digitalio.DigitalInOut(board.${p.pins.pin})`,
+       `${v}.direction = digitalio.Direction.OUTPUT`],
+  acts:(p)=> p.opts.pwm ? ["pwm_set","pwm_fade","out_blink_pwm"] : ["out_on","out_off","out_toggle","out_blink"],
+  reads:[],
+  wire:(p)=>[`LEDの長い足(＋) → 抵抗 220〜330Ω → ${p.pins.pin}`,
+             "LEDの短い足(−) → GND",
+             "抵抗を入れないとLEDが壊れます。必ず入れてください。"]
+},
+
+rgb_led:{
+  name:"フルカラーLED", icon:"🌈", cat:"出力", color:"--pink", base:"rgb",
+  desc:"赤・緑・青が1つに入ったLED（3本足＋共通足）",
+  pins:[{k:"r",label:"赤",sel:gpSel("GP16")},{k:"g",label:"緑",sel:gpSel("GP17")},{k:"b",label:"青",sel:gpSel("GP18")}],
+  opts:[{k:"common",label:"共通足",type:"sel",def:"cathode",
+         options:[["カソードコモン(共通=GND)","cathode"],["アノードコモン(共通=3V3)","anode"]]}],
+  imports:["board","pwmio"],
+  setup:(p,v)=>[
+    `${v}_r = pwmio.PWMOut(board.${p.pins.r}, frequency=1000, duty_cycle=0)`,
+    `${v}_g = pwmio.PWMOut(board.${p.pins.g}, frequency=1000, duty_cycle=0)`,
+    `${v}_b = pwmio.PWMOut(board.${p.pins.b}, frequency=1000, duty_cycle=0)`],
+  helpers:(p,v)=>[{
+    key:v+"_set",
+    lines:[`def ${v}_set(r, g, b):`,
+           `    """0〜255 の明るさで色を指定する"""`,
+           ...(p.opts.common === "anode"
+              ? [`    ${v}_r.duty_cycle = 65535 - int(r) * 257`,
+                 `    ${v}_g.duty_cycle = 65535 - int(g) * 257`,
+                 `    ${v}_b.duty_cycle = 65535 - int(b) * 257`]
+              : [`    ${v}_r.duty_cycle = int(r) * 257`,
+                 `    ${v}_g.duty_cycle = int(g) * 257`,
+                 `    ${v}_b.duty_cycle = int(b) * 257`])]
+  }],
+  acts:()=>["rgb_set","rgb_off"],
+  reads:[],
+  wire:(p)=>[`赤の足 → 抵抗220Ω → ${p.pins.r}`,`緑の足 → 抵抗220Ω → ${p.pins.g}`,
+             `青の足 → 抵抗220Ω → ${p.pins.b}`,
+             p.opts.common === "anode" ? "いちばん長い共通足 → 3V3(OUT)" : "いちばん長い共通足 → GND"]
+},
+
+neopixel:{
+  name:"NeoPixel", icon:"✨", cat:"出力", color:"--violet", base:"pixels",
+  desc:"フルカラーLEDテープ / リング（WS2812B）",
+  pins:[{k:"pin",label:"DIN",sel:gpSel("GP0")}],
+  opts:[{k:"num",label:"個数",type:"int",def:8,min:1,max:300},
+        {k:"bright",label:"明るさ%",type:"int",def:30,min:1,max:100}],
+  imports:["board","neopixel"],
+  libs:["neopixel.mpy"],
+  setup:(p,v)=>[`${v} = neopixel.NeoPixel(board.${p.pins.pin}, ${p.opts.num}, ` +
+                `brightness=${(p.opts.bright/100).toFixed(2)}, auto_write=True)`],
+  acts:()=>["np_fill","np_one","np_off","np_bright","np_rainbow"],
+  reads:[],
+  wire:(p)=>[`DIN(データ入力) → ${p.pins.pin}`,"5V(＋) → VBUS（USB電源の5V）","GND(−) → GND",
+             "16個以上つなぐときは、外部の5V電源を使ってください（GNDはPicoと必ずつなぐ）。"]
+},
+
+buzzer:{
+  name:"ブザー", icon:"🔊", cat:"出力", color:"--gold", base:"buzzer",
+  desc:"圧電スピーカー（音を鳴らす）",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP14")}],
+  opts:[],
+  imports:["board","pwmio","time"],
+  setup:(p,v)=>[`${v} = pwmio.PWMOut(board.${p.pins.pin}, frequency=440, duty_cycle=0, variable_frequency=True)`],
+  helpers:(p,v)=>[{
+    key:v+"_tone",
+    lines:[`def ${v}_tone(freq, sec):`,
+           `    """指定した高さの音を sec 秒鳴らす"""`,
+           `    ${v}.frequency = int(freq)`,
+           `    ${v}.duty_cycle = 32768`,
+           `    time.sleep(sec)`,
+           `    ${v}.duty_cycle = 0`]
+  }],
+  acts:()=>["buzz_note","buzz_freq","buzz_stop"],
+  reads:[],
+  wire:(p)=>[`ブザーの＋ → ${p.pins.pin}`,"ブザーの− → GND",
+             "「自励式（電圧をかけるだけで鳴る）」ではなく、外部駆動の圧電スピーカーを使います。"]
+},
+
+servo:{
+  name:"サーボモーター", icon:"🎚", cat:"出力", color:"--signal", base:"servo",
+  desc:"角度を指定して回すモーター（SG90など）",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP0")}],
+  opts:[{k:"range",label:"可動範囲",type:"sel",def:"180",options:[["180度","180"],["270度","270"],["連続回転","cont"]]}],
+  imports:["board","pwmio"],
+  froms:["from adafruit_motor import servo as servo_lib"],
+  libs:["adafruit_motor/"],
+  setup:(p,v)=>[
+    `${v}_pwm = pwmio.PWMOut(board.${p.pins.pin}, duty_cycle=0, frequency=50)`,
+    p.opts.range === "cont"
+      ? `${v} = servo_lib.ContinuousServo(${v}_pwm)`
+      : `${v} = servo_lib.Servo(${v}_pwm, min_pulse=500, max_pulse=2500, actuation_range=${p.opts.range})`],
+  acts:(p)=> p.opts.range === "cont" ? ["servo_cont"] : ["servo_angle"],
+  reads:[],
+  wire:(p)=>[`オレンジ(信号) → ${p.pins.pin}`,"赤(＋) → VBUS（5V）","茶または黒(−) → GND",
+             "サーボは電流を多く使います。USBから直接とる場合は1個までにしてください。"]
+},
+
+dcmotor:{
+  name:"DCモーター", icon:"⚙️", cat:"出力", color:"--orange", base:"motor",
+  desc:"モータードライバ（DRV8833 / L298N など）経由で回す",
+  pins:[{k:"in1",label:"IN1",sel:gpSel("GP16")},{k:"in2",label:"IN2",sel:gpSel("GP17")}],
+  opts:[],
+  imports:["board","pwmio"],
+  froms:["from adafruit_motor import motor as motor_lib"],
+  libs:["adafruit_motor/"],
+  setup:(p,v)=>[
+    `${v} = motor_lib.DCMotor(pwmio.PWMOut(board.${p.pins.in1}, frequency=50),`,
+    `                        pwmio.PWMOut(board.${p.pins.in2}, frequency=50))`],
+  acts:()=>["motor_speed","motor_stop"],
+  reads:[],
+  wire:(p)=>[`ドライバのIN1 → ${p.pins.in1}`,`ドライバのIN2 → ${p.pins.in2}`,
+             "ドライバのVCC(ロジック) → 3V3(OUT)、GND → PicoのGND",
+             "モーター用の電源はドライバに別途つなぎます（PicoのGNDと共通に）。",
+             "モーターをPicoに直結してはいけません。必ずドライバを使ってください。"]
+},
+
+relay:{
+  name:"リレー", icon:"🔀", cat:"出力", color:"--alert", base:"relay",
+  desc:"家電などのON/OFFを切り替えるスイッチ",
+  pins:[{k:"pin",label:"IN",sel:gpSel("GP15")}],
+  opts:[{k:"low",label:"LOWでON（負論理モジュール）",type:"bool",def:true}],
+  imports:["board","digitalio"],
+  setup:(p,v)=>[`${v} = digitalio.DigitalInOut(board.${p.pins.pin})`,
+                `${v}.direction = digitalio.Direction.OUTPUT`,
+                `${v}.value = ${p.opts.low ? "True" : "False"}   # 起動時はOFF`],
+  acts:()=>["relay_on","relay_off"],
+  reads:[],
+  wire:(p)=>[`リレーモジュールのIN → ${p.pins.pin}`,"VCC → VBUS(5V)　または モジュールの仕様に合わせて 3V3",
+             "GND → GND","AC100Vを扱う場合は感電の危険があります。知識のある人と一緒に作業してください。"]
+},
+
+oled:{
+  name:"OLEDディスプレイ", icon:"🖥", cat:"表示", color:"--trace", base:"oled",
+  desc:"SSD1306（0.96インチ I2C）に文字を出す",
+  pins:[], bus:"i2c",
+  opts:[{k:"addr",label:"アドレス",type:"sel",def:"0x3C",options:[["0x3C","0x3C"],["0x3D","0x3D"]]},
+        {k:"w",label:"幅",type:"int",def:128,min:64,max:128},
+        {k:"h",label:"高さ",type:"sel",def:"64",options:[["64","64"],["32","32"]]},
+        {k:"lines",label:"行数",type:"int",def:4,min:1,max:6}],
+  imports:["board","displayio","i2cdisplaybus","terminalio"],
+  froms:["import adafruit_displayio_ssd1306","from adafruit_display_text import label"],
+  libs:["adafruit_displayio_ssd1306.mpy","adafruit_display_text/"],
+  pre:["displayio.release_displays()"],
+  setup:(p,v)=>[
+    `${v}_bus = i2cdisplaybus.I2CDisplayBus(i2c, device_address=${p.opts.addr})`,
+    `${v} = adafruit_displayio_ssd1306.SSD1306(${v}_bus, width=${p.opts.w}, height=${p.opts.h})`,
+    `${v}_group = displayio.Group()`,
+    `${v}_lines = []`,
+    `for _i in range(${p.opts.lines}):`,
+    `    _lb = label.Label(terminalio.FONT, text="", color=0xFFFFFF, x=2, y=8 + _i * ${Math.max(10, Math.floor((parseInt(p.opts.h,10) - 4) / Math.max(1, p.opts.lines)))})`,
+    `    ${v}_lines.append(_lb)`,
+    `    ${v}_group.append(_lb)`,
+    `${v}.root_group = ${v}_group`],
+  acts:()=>["oled_text","oled_clear"],
+  reads:[],
+  wire:(p)=>["SDA → I2CのSDAピン（下の「I2Cの設定」で決めたピン）","SCL → I2CのSCLピン",
+             "VCC → 3V3(OUT)","GND → GND",
+             "画面が出ないときはアドレスを 0x3D に変えてみてください。"]
+},
+
+lcd:{
+  name:"キャラクタLCD", icon:"🔡", cat:"表示", color:"--trace", base:"lcd",
+  desc:"16x2 文字表示LCD（I2Cバックパック付き）",
+  pins:[], bus:"i2c",
+  opts:[{k:"cols",label:"桁",type:"int",def:16,min:8,max:20},
+        {k:"rows",label:"行",type:"int",def:2,min:1,max:4}],
+  imports:["board"],
+  froms:["import adafruit_character_lcd.character_lcd_i2c as character_lcd"],
+  libs:["adafruit_character_lcd/"],
+  setup:(p,v)=>[`${v} = character_lcd.Character_LCD_I2C(i2c, ${p.opts.cols}, ${p.opts.rows})`,
+                `${v}.backlight = True`],
+  acts:()=>["lcd_text","lcd_clear"],
+  reads:[],
+  wire:()=>["SDA → I2CのSDAピン","SCL → I2CのSCLピン","VCC → VBUS(5V)","GND → GND",
+            "Adafruit の I2C/SPI キャラクタLCDバックパック用です。PCF8574 の安価なモジュールは別ライブラリが必要です。"]
+},
+
+/* ---------------- 入力 ---------------- */
+button:{
+  name:"ボタン", icon:"🔘", cat:"入力", color:"--signal", base:"button",
+  desc:"押しボタンスイッチ（タクトスイッチ）",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP14")}],
+  opts:[{k:"pull",label:"つなぎ方",type:"sel",def:"up",
+         options:[["もう片方をGNDへ（プルアップ）","up"],["もう片方を3V3へ（プルダウン）","down"]]}],
+  imports:["board","digitalio"],
+  setup:(p,v)=>[`${v} = digitalio.DigitalInOut(board.${p.pins.pin})`,
+                `${v}.direction = digitalio.Direction.INPUT`,
+                `${v}.pull = digitalio.Pull.${p.opts.pull === "up" ? "UP" : "DOWN"}`],
+  acts:()=>["btn_wait","btn_wait_release"],
+  reads:(p)=>[
+    {k:"pressed",label:"が押されている",kind:"bool",expr:(v)=> p.opts.pull==="up" ? `not ${v}.value` : `${v}.value`},
+    {k:"released",label:"が離されている",kind:"bool",expr:(v)=> p.opts.pull==="up" ? `${v}.value` : `not ${v}.value`}],
+  wire:(p)=>[`スイッチの片方 → ${p.pins.pin}`,
+             p.opts.pull === "up" ? "スイッチのもう片方 → GND" : "スイッチのもう片方 → 3V3(OUT)",
+             "Pico内部の抵抗を使うので、外付け抵抗は不要です。"]
+},
+
+touch:{
+  name:"タッチセンサー", icon:"👆", cat:"入力", color:"--signal", base:"touch",
+  desc:"導線や金属板に触れたことを検出（touchio）",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP10")}],
+  opts:[],
+  imports:["board","touchio"],
+  setup:(p,v)=>[`${v} = touchio.TouchIn(board.${p.pins.pin})`],
+  acts:()=>[],
+  reads:()=>[{k:"touched",label:"に触れている",kind:"bool",expr:(v)=>`${v}.value`},
+             {k:"raw",label:"の生の値",kind:"num",expr:(v)=>`${v}.raw_value`,unit:""}],
+  wire:(p)=>[`${p.pins.pin} → 1MΩの抵抗 → GND（安定します。無くても動く場合あり）`,
+             `${p.pins.pin} → 触る金属板やアルミホイル`,
+             "電源投入時に触れていると、基準値がずれます。手を離した状態で起動してください。"]
+},
+
+potentiometer:{
+  name:"可変抵抗", icon:"🎛", cat:"入力", color:"--gold", base:"pot",
+  desc:"つまみを回して数値を変える（ボリューム）",
+  pins:[{k:"pin",label:"中央端子",sel:adcSel("GP26")}],
+  opts:[],
+  imports:["board","analogio"],
+  setup:(p,v)=>[`${v} = analogio.AnalogIn(board.${p.pins.pin})`],
+  acts:()=>[],
+  reads:()=>[{k:"pct",label:"の位置(0〜100%)",kind:"num",expr:(v)=>`int(${v}.value / 65535 * 100)`,unit:"%"},
+             {k:"deg",label:"の角度(0〜180)",kind:"num",expr:(v)=>`int(${v}.value / 65535 * 180)`,unit:"度"},
+             {k:"raw",label:"の生の値(0〜65535)",kind:"num",expr:(v)=>`${v}.value`,unit:""},
+             {k:"volt",label:"の電圧(V)",kind:"num",expr:(v)=>`round(${v}.value * 3.3 / 65535, 2)`,unit:"V"}],
+  wire:(p)=>["左端 → GND","右端 → 3V3(OUT)",`中央 → ${p.pins.pin}`,
+             "中央の端子だけがアナログピンに入ります。"]
+},
+
+cds:{
+  name:"光センサー", icon:"🔆", cat:"入力", color:"--gold", base:"light",
+  desc:"CdSセル（明るさを測る）",
+  pins:[{k:"pin",label:"信号",sel:adcSel("GP27")}],
+  opts:[],
+  imports:["board","analogio"],
+  setup:(p,v)=>[`${v} = analogio.AnalogIn(board.${p.pins.pin})`],
+  acts:()=>[],
+  reads:()=>[{k:"pct",label:"の明るさ(0〜100)",kind:"num",expr:(v)=>`int(${v}.value / 65535 * 100)`,unit:""},
+             {k:"raw",label:"の生の値",kind:"num",expr:(v)=>`${v}.value`,unit:""}],
+  wire:(p)=>["CdSの片足 → 3V3(OUT)",`CdSのもう片足 → ${p.pins.pin} と 10kΩ抵抗`,
+             "10kΩ抵抗のもう片方 → GND",
+             "この配線では、明るいほど数値が大きくなります。"]
+},
+
+analog_in:{
+  name:"アナログ入力", icon:"📈", cat:"入力", color:"--gold", base:"ain",
+  desc:"どんなアナログセンサーでも使える汎用入力",
+  pins:[{k:"pin",label:"信号",sel:adcSel("GP28")}],
+  opts:[],
+  imports:["board","analogio"],
+  setup:(p,v)=>[`${v} = analogio.AnalogIn(board.${p.pins.pin})`],
+  acts:()=>[],
+  reads:()=>[{k:"raw",label:"の値(0〜65535)",kind:"num",expr:(v)=>`${v}.value`,unit:""},
+             {k:"pct",label:"の値(0〜100%)",kind:"num",expr:(v)=>`int(${v}.value / 65535 * 100)`,unit:"%"},
+             {k:"deg",label:"の値(0〜180)",kind:"num",expr:(v)=>`int(${v}.value / 65535 * 180)`,unit:"度"},
+             {k:"volt",label:"の電圧(V)",kind:"num",expr:(v)=>`round(${v}.value * 3.3 / 65535, 2)`,unit:"V"}],
+  wire:(p)=>[`センサーの出力 → ${p.pins.pin}`,"センサーのVCC → 3V3(OUT)","センサーのGND → GND",
+             "入力できるのは 0〜3.3V です。5V出力のセンサーは分圧回路を入れてください。"]
+},
+
+digital_in:{
+  name:"デジタル入力", icon:"⬇️", cat:"入力", color:"--signal", base:"din",
+  desc:"ON/OFF だけを読む汎用入力（スイッチ・センサー出力）",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP12")}],
+  opts:[{k:"pull",label:"内部抵抗",type:"sel",def:"up",options:[["プルアップ","up"],["プルダウン","down"],["なし","none"]]}],
+  imports:["board","digitalio"],
+  setup:(p,v)=>{
+    const l = [`${v} = digitalio.DigitalInOut(board.${p.pins.pin})`,
+               `${v}.direction = digitalio.Direction.INPUT`];
+    if (p.opts.pull !== "none") l.push(`${v}.pull = digitalio.Pull.${p.opts.pull === "up" ? "UP" : "DOWN"}`);
+    return l;
+  },
+  acts:()=>[],
+  reads:()=>[{k:"on",label:"がON(High)",kind:"bool",expr:(v)=>`${v}.value`},
+             {k:"off",label:"がOFF(Low)",kind:"bool",expr:(v)=>`not ${v}.value`}],
+  wire:(p)=>[`信号 → ${p.pins.pin}`,"GND同士をつなぐのを忘れずに。"]
+},
+
+pir:{
+  name:"人感センサー", icon:"🚶", cat:"入力", color:"--violet", base:"pir",
+  desc:"HC-SR501 など（人の動きを検出）",
+  pins:[{k:"pin",label:"OUT",sel:gpSel("GP13")}],
+  opts:[],
+  imports:["board","digitalio"],
+  setup:(p,v)=>[`${v} = digitalio.DigitalInOut(board.${p.pins.pin})`,
+                `${v}.direction = digitalio.Direction.INPUT`,
+                `${v}.pull = digitalio.Pull.DOWN`],
+  acts:()=>[],
+  reads:()=>[{k:"detect",label:"が反応している",kind:"bool",expr:(v)=>`${v}.value`}],
+  wire:(p)=>[`OUT → ${p.pins.pin}`,"VCC → VBUS(5V)","GND → GND",
+             "電源を入れてから約30〜60秒は値が安定しません。"]
+},
+
+cpu_temp:{
+  name:"内蔵温度センサー", icon:"🌡", cat:"入力", color:"--trace", base:"cpu",
+  desc:"Picoのチップに内蔵。配線不要（精度は低め）",
+  pins:[], opts:[],
+  imports:["microcontroller"],
+  setup:()=>[],
+  acts:()=>[],
+  reads:()=>[{k:"temp",label:"の温度(℃)",kind:"num",expr:()=>`round(microcontroller.cpu.temperature, 1)`,unit:"℃"}],
+  wire:()=>["配線は不要です。","チップ自身の発熱を拾うため、室温より数℃高めに出ます。"]
+},
+
+dht:{
+  name:"温湿度センサー", icon:"💧", cat:"入力", color:"--signal", base:"dht",
+  desc:"DHT11 / DHT22（温度と湿度）",
+  pins:[{k:"pin",label:"DATA",sel:gpSel("GP16")}],
+  opts:[{k:"model",label:"型番",type:"sel",def:"DHT11",options:[["DHT11","DHT11"],["DHT22 / AM2302","DHT22"]]}],
+  imports:["board","adafruit_dht"],
+  libs:["adafruit_dht.mpy"],
+  setup:(p,v)=>[`${v} = adafruit_dht.${p.opts.model}(board.${p.pins.pin})`],
+  helpers:(p,v)=>[{
+    key:v+"_read",
+    lines:[`${v}_cache = {"temperature": 0.0, "humidity": 0.0}`,
+           `def ${v}_read(key):`,
+           `    """読み取りに失敗しても止まらないように、前回値を返す"""`,
+           `    try:`,
+           `        ${v}_cache["temperature"] = ${v}.temperature`,
+           `        ${v}_cache["humidity"] = ${v}.humidity`,
+           `    except (RuntimeError, OSError):`,
+           `        pass`,
+           `    return ${v}_cache[key]`]
+  }],
+  acts:()=>[],
+  reads:()=>[{k:"temp",label:"の温度(℃)",kind:"num",expr:(v)=>`${v}_read("temperature")`,unit:"℃"},
+             {k:"hum",label:"の湿度(%)",kind:"num",expr:(v)=>`${v}_read("humidity")`,unit:"%"}],
+  wire:(p)=>[`DATA → ${p.pins.pin}`,"VCC → 3V3(OUT)","GND → GND",
+             "DATAとVCCの間に10kΩのプルアップ抵抗を入れると安定します。",
+             "読み取りは2秒以上あけてください。"]
+},
+
+hcsr04:{
+  name:"距離センサー", icon:"📏", cat:"入力", color:"--violet", base:"sonar",
+  desc:"HC-SR04 超音波距離センサー",
+  pins:[{k:"trig",label:"TRIG",sel:gpSel("GP2")},{k:"echo",label:"ECHO",sel:gpSel("GP3")}],
+  opts:[],
+  imports:["board","adafruit_hcsr04"],
+  libs:["adafruit_hcsr04.mpy"],
+  setup:(p,v)=>[`${v} = adafruit_hcsr04.HCSR04(trigger_pin=board.${p.pins.trig}, echo_pin=board.${p.pins.echo})`],
+  helpers:(p,v)=>[{
+    key:v+"_read",
+    lines:[`${v}_last = 0.0`,
+           `def ${v}_read():`,
+           `    """測れなかったときは前回の距離を返す"""`,
+           `    global ${v}_last`,
+           `    try:`,
+           `        ${v}_last = ${v}.distance`,
+           `    except (RuntimeError, OSError):`,
+           `        pass`,
+           `    return ${v}_last`]
+  }],
+  acts:()=>[],
+  reads:()=>[{k:"cm",label:"までの距離(cm)",kind:"num",expr:(v)=>`round(${v}_read(), 1)`,unit:"cm"}],
+  wire:(p)=>[`TRIG → ${p.pins.trig}`,`ECHO → 抵抗1kΩ → ${p.pins.echo}（さらに ${p.pins.echo} → 2kΩ → GND）`,
+             "VCC → VBUS(5V)","GND → GND",
+             "ECHOは5Vで出力されます。分圧して3.3Vに下げないとPicoが傷みます。"]
+},
+
+bme280:{
+  name:"気圧・温湿度センサー", icon:"🌤", cat:"入力", color:"--trace", base:"bme",
+  desc:"BME280（温度・湿度・気圧）",
+  pins:[], bus:"i2c",
+  opts:[{k:"addr",label:"アドレス",type:"sel",def:"0x76",options:[["0x76","0x76"],["0x77","0x77"]]}],
+  imports:[],
+  froms:["from adafruit_bme280 import basic as adafruit_bme280"],
+  libs:["adafruit_bme280/"],
+  setup:(p,v)=>[`${v} = adafruit_bme280.Adafruit_BME280_I2C(i2c, address=${p.opts.addr})`],
+  acts:()=>[],
+  reads:()=>[{k:"t",label:"の温度(℃)",kind:"num",expr:(v)=>`round(${v}.temperature, 1)`,unit:"℃"},
+             {k:"h",label:"の湿度(%)",kind:"num",expr:(v)=>`round(${v}.humidity, 1)`,unit:"%"},
+             {k:"p",label:"の気圧(hPa)",kind:"num",expr:(v)=>`round(${v}.pressure, 1)`,unit:"hPa"}],
+  wire:()=>["SDA → I2CのSDAピン","SCL → I2CのSCLピン","VCC → 3V3(OUT)","GND → GND"]
+},
+
+mpu6050:{
+  name:"加速度センサー", icon:"🧭", cat:"入力", color:"--pink", base:"mpu",
+  desc:"MPU6050（傾き・動き・回転）",
+  pins:[], bus:"i2c",
+  opts:[],
+  imports:["adafruit_mpu6050"],
+  libs:["adafruit_mpu6050.mpy"],
+  setup:(p,v)=>[`${v} = adafruit_mpu6050.MPU6050(i2c)`],
+  acts:()=>[],
+  reads:()=>[{k:"ax",label:"の傾きX",kind:"num",expr:(v)=>`round(${v}.acceleration[0], 2)`,unit:"m/s²"},
+             {k:"ay",label:"の傾きY",kind:"num",expr:(v)=>`round(${v}.acceleration[1], 2)`,unit:"m/s²"},
+             {k:"az",label:"の傾きZ",kind:"num",expr:(v)=>`round(${v}.acceleration[2], 2)`,unit:"m/s²"},
+             {k:"gz",label:"の回転Z",kind:"num",expr:(v)=>`round(${v}.gyro[2], 2)`,unit:"rad/s"},
+             {k:"t",label:"の温度(℃)",kind:"num",expr:(v)=>`round(${v}.temperature, 1)`,unit:"℃"}],
+  wire:()=>["SDA → I2CのSDAピン","SCL → I2CのSCLピン","VCC → 3V3(OUT)","GND → GND"]
+},
+
+encoder:{
+  name:"ロータリーエンコーダ", icon:"🔄", cat:"入力", color:"--gold", base:"enc",
+  desc:"回した量を数えるつまみ",
+  pins:[{k:"a",label:"CLK(A)",sel:gpSel("GP4")},{k:"b",label:"DT(B)",sel:gpSel("GP5")}],
+  opts:[],
+  imports:["board","rotaryio"],
+  setup:(p,v)=>[`${v} = rotaryio.IncrementalEncoder(board.${p.pins.a}, board.${p.pins.b})`],
+  acts:()=>["enc_reset"],
+  reads:()=>[{k:"pos",label:"の位置",kind:"num",expr:(v)=>`${v}.position`,unit:""}],
+  wire:(p)=>[`CLK(A) → ${p.pins.a}`,`DT(B) → ${p.pins.b}`,"＋ → 3V3(OUT)","GND → GND",
+             "押しボタン付きの場合、SWは「ボタン」部品として別に追加してください。"]
+},
+
+/* ---------------- 通信・その他 ---------------- */
+hid_keyboard:{
+  name:"USBキーボード", icon:"⌨️", cat:"通信", color:"--violet", base:"kbd",
+  desc:"Picoをキーボードとして使い、PCに文字を送る",
+  pins:[], opts:[],
+  imports:["usb_hid"],
+  froms:["from adafruit_hid.keyboard import Keyboard","from adafruit_hid.keycode import Keycode",
+         "from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS"],
+  libs:["adafruit_hid/"],
+  setup:(p,v)=>[`${v} = Keyboard(usb_hid.devices)`,
+                `${v}_layout = KeyboardLayoutUS(${v})`],
+  acts:()=>["hid_key","hid_text"],
+  reads:[],
+  wire:()=>["配線は不要です。PicoをUSBでパソコンにつなぐだけ。",
+            "勝手に文字を打ち続けると操作できなくなります。必ずボタンを押したときだけ送るようにしてください。",
+            "文字配列は英語キーボード(US)です。日本語配列のPCでは記号がずれます。"]
+},
+
+hid_mouse:{
+  name:"USBマウス", icon:"🖱", cat:"通信", color:"--violet", base:"mouse",
+  desc:"Picoをマウスとして使う",
+  pins:[], opts:[],
+  imports:["usb_hid"],
+  froms:["from adafruit_hid.mouse import Mouse"],
+  libs:["adafruit_hid/"],
+  setup:(p,v)=>[`${v} = Mouse(usb_hid.devices)`],
+  acts:()=>["mouse_move","mouse_click"],
+  reads:[],
+  wire:()=>["配線は不要です。PicoをUSBでパソコンにつなぐだけ。"]
+},
+
+uart:{
+  name:"シリアル通信", icon:"📡", cat:"通信", color:"--signal", base:"uart",
+  desc:"別のマイコンやモジュールと文字をやりとり",
+  pins:[{k:"tx",label:"TX",sel:gpSel("GP0")},{k:"rx",label:"RX",sel:gpSel("GP1")}],
+  opts:[{k:"baud",label:"速度",type:"sel",def:"9600",
+         options:[["9600","9600"],["19200","19200"],["38400","38400"],["57600","57600"],["115200","115200"]]}],
+  imports:["board","busio"],
+  setup:(p,v)=>[`${v} = busio.UART(board.${p.pins.tx}, board.${p.pins.rx}, baudrate=${p.opts.baud}, timeout=0.1)`],
+  acts:()=>["uart_send","uart_recv"],
+  reads:[],
+  wire:(p)=>[`相手のRX → ${p.pins.tx}（TX）`,`相手のTX → ${p.pins.rx}（RX）`,"GND同士を必ずつなぐ",
+             "TXとRXは、たすきがけにつなぎます。"]
+},
+
+digital_out:{
+  name:"デジタル出力", icon:"⬆️", cat:"出力", color:"--silk-dim", base:"out",
+  desc:"ON/OFF を出す汎用ピン",
+  pins:[{k:"pin",label:"信号",sel:gpSel("GP20")}],
+  opts:[],
+  imports:["board","digitalio"],
+  setup:(p,v)=>[`${v} = digitalio.DigitalInOut(board.${p.pins.pin})`,
+                `${v}.direction = digitalio.Direction.OUTPUT`],
+  acts:()=>["out_on","out_off","out_toggle"],
+  reads:[],
+  wire:(p)=>[`信号 → ${p.pins.pin}`,"1ピンから取り出せる電流は最大約12mAです。それ以上はトランジスタを使ってください。"]
+}
+
+};
+
+/* ============================================================================
+   動作ブロックのカタログ
+   text: 表示の並び。文字列 / {p:"パラメータ名"} / {part:1} を並べる
+   ============================================================================ */
+const BLOCKS = {
+
+/* ---------------- 流れ ---------------- */
+wait:{ cat:"flow", label:"待つ", icon:"⏱", color:"--violet",
+  params:[{k:"sec",type:"num",def:1,min:0,step:0.1,src:true}],
+  text:[{p:"sec"},"秒 待つ"],
+  imports:["time"],
+  code:(b)=>[`time.sleep(${valExpr(b.p.sec)})`] },
+
+wait_ms:{ cat:"flow", label:"ミリ秒待つ", icon:"⏱", color:"--violet",
+  params:[{k:"ms",type:"int",def:200,min:1,max:60000,src:true}],
+  text:[{p:"ms"},"ミリ秒 待つ"],
+  imports:["time"],
+  code:(b)=>[`time.sleep(${valExpr(b.p.ms)} / 1000)`] },
+
+repeat_n:{ cat:"flow", label:"回数くり返す", icon:"🔁", color:"--violet",
+  params:[{k:"n",type:"int",def:5,min:1,max:100000,src:true}],
+  text:[{p:"n"},"回くり返す"],
+  slots:[{k:"do",label:""}],
+  wrap:(b,g,kids)=>[`for _i in range(int(${valExpr(b.p.n)})):`, ...ind(kids)] },
+
+while_cond:{ cat:"flow", label:"〜の間くり返す", icon:"🔃", color:"--violet",
+  params:[{k:"c",type:"cond"}],
+  text:["もし",{p:"c"},"の間くり返す"],
+  slots:[{k:"do",label:""}],
+  wrap:(b,g,kids)=>[`while ${condExpr(b.p.c)}:`, ...ind(kids)] },
+
+if_then:{ cat:"flow", label:"もし〜なら", icon:"❓", color:"--violet",
+  params:[{k:"c",type:"cond"}],
+  text:["もし",{p:"c"},"なら"],
+  slots:[{k:"do",label:""}],
+  wrap:(b,g,kids)=>[`if ${condExpr(b.p.c)}:`, ...ind(kids)] },
+
+if_else:{ cat:"flow", label:"もし〜なら／でなければ", icon:"⚖️", color:"--violet",
+  params:[{k:"c",type:"cond"}],
+  text:["もし",{p:"c"},"なら"],
+  slots:[{k:"do",label:""},{k:"els",label:"でなければ"}],
+  wrap:(b,g,kids,kids2)=>[`if ${condExpr(b.p.c)}:`, ...ind(kids), "else:", ...ind(kids2)] },
+
+break_loop:{ cat:"flow", label:"くり返しを抜ける", icon:"⏹", color:"--violet",
+  params:[], text:["くり返しを抜ける"],
+  code:()=>["break"] },
+
+comment:{ cat:"flow", label:"メモ", icon:"📝", color:"--silk-dim",
+  params:[{k:"t",type:"text",def:"ここに説明",w:220}],
+  text:["メモ",{p:"t"}],
+  code:(b)=>{
+    const t = pyComment(b.p.t);
+    return t ? [`# ${t}`] : ["# "];
+  } },
+
+print_out:{ cat:"flow", label:"シリアルに表示", icon:"📤", color:"--trace",
+  params:[{k:"t",type:"text",def:"こんにちは",w:150},{k:"v",type:"valsrc"}],
+  text:["シリアルに",{p:"t"},{p:"v"},"を表示"],
+  code:(b)=>{
+    const e = srcExpr(b.p.v);
+    const t = pyStr(b.p.t);
+    if (e && b.p.t) return [`print(${t}, ${e})`];
+    if (e) return [`print(${e})`];
+    return [`print(${t})`];
+  } },
+
+/* ---------------- 変数 ---------------- */
+var_set:{ cat:"var", label:"変数に入れる", icon:"📥", color:"--pink",
+  params:[{k:"v",type:"var"},{k:"x",type:"num",def:0,src:true}],
+  text:["変数",{p:"v"},"に",{p:"x"},"を入れる"],
+  code:(b)=>{ const n = varName(b.p.v); return n ? [`${n} = ${valExpr(b.p.x)}`] : []; } },
+
+var_change:{ cat:"var", label:"変数を増やす／減らす", icon:"➕", color:"--pink",
+  params:[{k:"v",type:"var"},{k:"x",type:"num",def:1,src:true}],
+  text:["変数",{p:"v"},"を",{p:"x"},"だけ増やす"],
+  code:(b)=>{ const n = varName(b.p.v); return n ? [`${n} = ${n} + ${valExpr(b.p.x)}`] : []; } },
+
+var_random:{ cat:"var", label:"ランダムな数を入れる", icon:"🎲", color:"--pink",
+  params:[{k:"v",type:"var"},{k:"a",type:"int",def:1},{k:"b",type:"int",def:6}],
+  text:["変数",{p:"v"},"に",{p:"a"},"〜",{p:"b"},"のランダムな数を入れる"],
+  imports:["random"],
+  code:(b)=>{ const n = varName(b.p.v); return n ? [`${n} = random.randint(${int(b.p.a)}, ${int(b.p.b)})`] : []; } },
+
+/* ---------------- デジタル出力 ---------------- */
+out_on:{ cat:"part", part:["onboard_led","led","digital_out"], label:"点ける", icon:"🔆",
+  params:[], text:[{part:1},"を点ける"],
+  code:(b)=>[`${pv(b)}.value = True`] },
+
+out_off:{ cat:"part", part:["onboard_led","led","digital_out"], label:"消す", icon:"🌑",
+  params:[], text:[{part:1},"を消す"],
+  code:(b)=>[`${pv(b)}.value = False`] },
+
+out_toggle:{ cat:"part", part:["onboard_led","led","digital_out"], label:"点いてたら消す", icon:"🔁",
+  params:[], text:[{part:1},"の点灯／消灯を入れかえる"],
+  code:(b)=>[`${pv(b)}.value = not ${pv(b)}.value`] },
+
+out_blink:{ cat:"part", part:["onboard_led","led","digital_out"], label:"点滅させる", icon:"💫",
+  params:[{k:"on",type:"num",def:0.5,min:0,step:0.1},{k:"off",type:"num",def:0.5,min:0,step:0.1}],
+  text:[{part:1},"を",{p:"on"},"秒点けて",{p:"off"},"秒消す"],
+  imports:["time"],
+  code:(b)=>[`${pv(b)}.value = True`, `time.sleep(${valExpr(b.p.on)})`,
+             `${pv(b)}.value = False`, `time.sleep(${valExpr(b.p.off)})`] },
+
+/* ---------------- PWM(明るさ) ---------------- */
+pwm_set:{ cat:"part", part:["led"], label:"明るさを決める", icon:"🔅",
+  params:[{k:"x",type:"num",def:50,min:0,max:100,src:true}],
+  text:[{part:1},"の明るさを",{p:"x"},"% にする"],
+  code:(b)=>[`${pv(b)}.duty_cycle = int(65535 * max(0, min(100, ${valExpr(b.p.x)})) / 100)`] },
+
+pwm_fade:{ cat:"part", part:["led"], label:"じわっと変える", icon:"🌗",
+  params:[{k:"dir",type:"sel",def:"up",options:[["明るく","up"],["暗く","down"]]},
+          {k:"sec",type:"num",def:1,min:0.1,step:0.1}],
+  text:[{part:1},"を",{p:"sec"},"秒かけて",{p:"dir"},"する"],
+  imports:["time"],
+  code:(b)=>{
+    const r = b.p.dir === "up" ? "range(0, 101, 2)" : "range(100, -1, -2)";
+    return [`for _b in ${r}:`,
+            `    ${pv(b)}.duty_cycle = int(65535 * _b / 100)`,
+            `    time.sleep(${valExpr(b.p.sec)} / 50)`];
+  } },
+
+out_blink_pwm:{ cat:"part", part:["led"], label:"点滅させる", icon:"💫",
+  params:[{k:"on",type:"num",def:0.5,min:0,step:0.1},{k:"off",type:"num",def:0.5,min:0,step:0.1}],
+  text:[{part:1},"を",{p:"on"},"秒点けて",{p:"off"},"秒消す"],
+  imports:["time"],
+  code:(b)=>[`${pv(b)}.duty_cycle = 65535`, `time.sleep(${valExpr(b.p.on)})`,
+             `${pv(b)}.duty_cycle = 0`, `time.sleep(${valExpr(b.p.off)})`] },
+
+/* ---------------- フルカラーLED ---------------- */
+rgb_set:{ cat:"part", part:["rgb_led"], label:"色を決める", icon:"🎨",
+  params:[{k:"c",type:"color",def:"#ff8000"}],
+  text:[{part:1},"を",{p:"c"},"にする"],
+  code:(b)=>{ const c = hex2rgb(b.p.c); return [`${pv(b)}_set(${c[0]}, ${c[1]}, ${c[2]})`]; } },
+
+rgb_off:{ cat:"part", part:["rgb_led"], label:"消す", icon:"🌑",
+  params:[], text:[{part:1},"を消す"],
+  code:(b)=>[`${pv(b)}_set(0, 0, 0)`] },
+
+/* ---------------- NeoPixel ---------------- */
+np_fill:{ cat:"part", part:["neopixel"], label:"全部を光らせる", icon:"🎨",
+  params:[{k:"c",type:"color",def:"#00c8ff"}],
+  text:[{part:1},"の全部を",{p:"c"},"にする"],
+  code:(b)=>{ const c = hex2rgb(b.p.c); return [`${pv(b)}.fill((${c[0]}, ${c[1]}, ${c[2]}))`]; } },
+
+np_one:{ cat:"part", part:["neopixel"], label:"1つだけ光らせる", icon:"✨",
+  params:[{k:"i",type:"int",def:0,min:0,src:true},{k:"c",type:"color",def:"#ff0040"}],
+  text:[{part:1},"の",{p:"i"},"番目を",{p:"c"},"にする"],
+  code:(b)=>{ const c = hex2rgb(b.p.c);
+    return [`${pv(b)}[int(${valExpr(b.p.i)}) % len(${pv(b)})] = (${c[0]}, ${c[1]}, ${c[2]})`]; } },
+
+np_off:{ cat:"part", part:["neopixel"], label:"消す", icon:"🌑",
+  params:[], text:[{part:1},"を全部消す"],
+  code:(b)=>[`${pv(b)}.fill((0, 0, 0))`] },
+
+np_bright:{ cat:"part", part:["neopixel"], label:"明るさを決める", icon:"🔅",
+  params:[{k:"x",type:"num",def:30,min:1,max:100,src:true}],
+  text:[{part:1},"の明るさを",{p:"x"},"% にする"],
+  code:(b)=>[`${pv(b)}.brightness = max(0.01, min(1.0, ${valExpr(b.p.x)} / 100))`] },
+
+np_rainbow:{ cat:"part", part:["neopixel"], label:"レインボーを進める", icon:"🌈",
+  params:[{k:"s",type:"int",def:4,min:1,max:60}],
+  text:[{part:1},"のレインボーを",{p:"s"},"進める"],
+  froms:["from rainbowio import colorwheel"],
+  helper:(b)=>({ key:pv(b)+"_rainbow", lines:[
+    `${pv(b)}_hue = 0`,
+    `def ${pv(b)}_rainbow(step):`,
+    `    """虹色を step ぶんだけ回す"""`,
+    `    global ${pv(b)}_hue`,
+    `    ${pv(b)}_hue = (${pv(b)}_hue + step) % 256`,
+    `    for _i in range(len(${pv(b)})):`,
+    `        ${pv(b)}[_i] = colorwheel((_i * 256 // len(${pv(b)}) + ${pv(b)}_hue) % 256)`] }),
+  code:(b)=>[`${pv(b)}_rainbow(${int(b.p.s)})`] },
+
+/* ---------------- ブザー ---------------- */
+buzz_note:{ cat:"part", part:["buzzer"], label:"音階を鳴らす", icon:"🎵",
+  params:[{k:"n",type:"sel",def:"262",options:NOTES.map(n=>[n[0],String(n[1])])},
+          {k:"sec",type:"num",def:0.3,min:0.01,step:0.05}],
+  text:[{part:1},"で",{p:"n"},"を",{p:"sec"},"秒鳴らす"],
+  code:(b)=>[`${pv(b)}_tone(${b.p.n}, ${valExpr(b.p.sec)})`] },
+
+buzz_freq:{ cat:"part", part:["buzzer"], label:"周波数で鳴らす", icon:"🔊",
+  params:[{k:"hz",type:"int",def:440,min:20,max:20000,src:true},
+          {k:"sec",type:"num",def:0.3,min:0.01,step:0.05,src:true}],
+  text:[{part:1},"で",{p:"hz"},"Hz を",{p:"sec"},"秒鳴らす"],
+  code:(b)=>[`${pv(b)}_tone(${valExpr(b.p.hz)}, ${valExpr(b.p.sec)})`] },
+
+buzz_stop:{ cat:"part", part:["buzzer"], label:"音を止める", icon:"🔇",
+  params:[], text:[{part:1},"の音を止める"],
+  code:(b)=>[`${pv(b)}.duty_cycle = 0`] },
+
+/* ---------------- サーボ / モーター ---------------- */
+servo_angle:{ cat:"part", part:["servo"], label:"角度を決める", icon:"🎚",
+  params:[{k:"a",type:"num",def:90,min:0,max:(b)=>servoRange(b),src:true}],
+  text:[{part:1},"を",{p:"a"},"度にする"],
+  code:(b)=>[`${pv(b)}.angle = max(0, min(${servoRange(b)}, ${valExpr(b.p.a)}))`] },
+
+servo_cont:{ cat:"part", part:["servo"], label:"回す速さを決める", icon:"🔄",
+  params:[{k:"x",type:"num",def:50,min:-100,max:100,src:true}],
+  text:[{part:1},"を",{p:"x"},"% の速さで回す"],
+  code:(b)=>[`${pv(b)}.throttle = max(-1.0, min(1.0, ${valExpr(b.p.x)} / 100))`] },
+
+motor_speed:{ cat:"part", part:["dcmotor"], label:"速さを決める", icon:"⚙️",
+  params:[{k:"x",type:"num",def:60,min:-100,max:100,src:true}],
+  text:[{part:1},"を",{p:"x"},"% で回す（マイナスで逆回転）"],
+  code:(b)=>[`${pv(b)}.throttle = max(-1.0, min(1.0, ${valExpr(b.p.x)} / 100))`] },
+
+motor_stop:{ cat:"part", part:["dcmotor"], label:"止める", icon:"⏹",
+  params:[], text:[{part:1},"を止める"],
+  code:(b)=>[`${pv(b)}.throttle = 0`] },
+
+/* ---------------- リレー ---------------- */
+relay_on:{ cat:"part", part:["relay"], label:"ONにする", icon:"⚡",
+  params:[], text:[{part:1},"をONにする"],
+  code:(b)=>[`${pv(b)}.value = ${partOf(b) && partOf(b).opts.low ? "False" : "True"}`] },
+
+relay_off:{ cat:"part", part:["relay"], label:"OFFにする", icon:"🔌",
+  params:[], text:[{part:1},"をOFFにする"],
+  code:(b)=>[`${pv(b)}.value = ${partOf(b) && partOf(b).opts.low ? "True" : "False"}`] },
+
+/* ---------------- 画面 ---------------- */
+oled_text:{ cat:"part", part:["oled"], label:"文字を表示", icon:"🖥",
+  params:[{k:"l",type:"int",def:1,min:1,max:6},{k:"t",type:"text",def:"Hello",w:120},{k:"v",type:"valsrc"}],
+  text:[{part:1},"の",{p:"l"},"行目に",{p:"t"},{p:"v"},"を表示"],
+  code:(b)=>{
+    const e = srcExpr(b.p.v), i = Math.max(0, int(b.p.l) - 1);
+    const t = pyStr(b.p.t);
+    return [`${pv(b)}_lines[${i}].text = ${e ? (b.p.t ? `${t} + str(${e})` : `str(${e})`) : t}`];
+  } },
+
+oled_clear:{ cat:"part", part:["oled"], label:"画面を消す", icon:"🧹",
+  params:[], text:[{part:1},"の表示を消す"],
+  code:(b)=>[`for _lb in ${pv(b)}_lines:`, `    _lb.text = ""`] },
+
+lcd_text:{ cat:"part", part:["lcd"], label:"文字を表示", icon:"🔡",
+  params:[{k:"l",type:"int",def:1,min:1,max:4},{k:"t",type:"text",def:"Hello",w:120},{k:"v",type:"valsrc"}],
+  text:[{part:1},"の",{p:"l"},"行目に",{p:"t"},{p:"v"},"を表示"],
+  helper:(b)=>{
+    const P = partOf(b); if (!P) return null;
+    const v = pv(b);
+    return { key:v+"_line", lines:[
+      `${v}_buf = ["" for _ in range(${P.opts.rows})]`,
+      `def ${v}_line(i, text):`,
+      `    """LCDの i 行目(0から)を書きかえる"""`,
+      `    ${v}_buf[i] = str(text)[:${P.opts.cols}]`,
+      `    ${v}.message = "\\n".join(${v}_buf)`] };
+  },
+  code:(b)=>{
+    const e = srcExpr(b.p.v), i = Math.max(0, int(b.p.l) - 1), t = pyStr(b.p.t);
+    return [`${pv(b)}_line(${i}, ${e ? (b.p.t ? `${t} + str(${e})` : `${e}`) : t})`];
+  } },
+
+lcd_clear:{ cat:"part", part:["lcd"], label:"画面を消す", icon:"🧹",
+  params:[], text:[{part:1},"の表示を消す"],
+  code:(b)=>[`${pv(b)}_buf = ["" for _ in ${pv(b)}_buf]`, `${pv(b)}.clear()`] },
+
+/* ---------------- ボタン / エンコーダ ---------------- */
+btn_wait:{ cat:"part", part:["button"], label:"押されるまで待つ", icon:"⏳",
+  params:[], text:[{part:1},"が押されるまで待つ"],
+  imports:["time"],
+  code:(b)=>{ const P = partOf(b); if (!P) return [];
+    const c = P.opts.pull === "up" ? `${pv(b)}.value` : `not ${pv(b)}.value`;
+    return [`while ${c}:`, `    time.sleep(0.01)`]; } },
+
+btn_wait_release:{ cat:"part", part:["button"], label:"離されるまで待つ", icon:"⌛",
+  params:[], text:[{part:1},"が離されるまで待つ"],
+  imports:["time"],
+  code:(b)=>{ const P = partOf(b); if (!P) return [];
+    const c = P.opts.pull === "up" ? `not ${pv(b)}.value` : `${pv(b)}.value`;
+    return [`while ${c}:`, `    time.sleep(0.01)`]; } },
+
+enc_reset:{ cat:"part", part:["encoder"], label:"位置を0に戻す", icon:"↩️",
+  params:[], text:[{part:1},"の位置を0に戻す"],
+  code:(b)=>[`${pv(b)}.position = 0`] },
+
+/* ---------------- HID ---------------- */
+hid_key:{ cat:"part", part:["hid_keyboard"], label:"キーを押す", icon:"⌨️",
+  params:[{k:"m",type:"sel",def:"",options:MODIFIERS},
+          {k:"k",type:"sel",def:"ENTER",options:KEYCODES}],
+  text:[{part:1},"で",{p:"m"},"＋",{p:"k"},"を押す"],
+  code:(b)=>{
+    const keys = (b.p.m ? b.p.m.split(",") : []).concat([b.p.k])
+      .map(k=>`Keycode.${k}`).join(", ");
+    return [`${pv(b)}.send(${keys})`];
+  } },
+
+hid_text:{ cat:"part", part:["hid_keyboard"], label:"文字を打つ", icon:"📝",
+  params:[{k:"t",type:"text",def:"Hello from Pico",w:190}],
+  text:[{part:1},"で",{p:"t"},"と打つ"],
+  code:(b)=>[`${pv(b)}_layout.write(${pyStr(b.p.t)})`] },
+
+mouse_move:{ cat:"part", part:["hid_mouse"], label:"動かす", icon:"🖱",
+  params:[{k:"x",type:"int",def:10,min:-127,max:127,src:true},
+          {k:"y",type:"int",def:0,min:-127,max:127,src:true}],
+  text:[{part:1},"を 横",{p:"x"},"／縦",{p:"y"},"だけ動かす"],
+  code:(b)=>[`${pv(b)}.move(x=int(${valExpr(b.p.x)}), y=int(${valExpr(b.p.y)}))`] },
+
+mouse_click:{ cat:"part", part:["hid_mouse"], label:"クリック", icon:"👇",
+  params:[{k:"btn",type:"sel",def:"LEFT_BUTTON",
+           options:[["左","LEFT_BUTTON"],["右","RIGHT_BUTTON"],["中","MIDDLE_BUTTON"]]}],
+  text:[{part:1},"で",{p:"btn"},"クリックする"],
+  code:(b)=>[`${pv(b)}.click(Mouse.${b.p.btn})`] },
+
+/* ---------------- シリアル通信 ---------------- */
+uart_send:{ cat:"part", part:["uart"], label:"送る", icon:"📡",
+  params:[{k:"t",type:"text",def:"PING",w:120},{k:"v",type:"valsrc"}],
+  text:[{part:1},"で",{p:"t"},{p:"v"},"を送る"],
+  code:(b)=>{
+    const e = srcExpr(b.p.v), t = pyStr(b.p.t);
+    const body = e ? (b.p.t ? `${t} + str(${e})` : `str(${e})`) : t;
+    return [`${pv(b)}.write((${body} + "\\n").encode())`];
+  } },
+
+uart_recv:{ cat:"part", part:["uart"], label:"受け取って変数に入れる", icon:"📥",
+  params:[{k:"v",type:"var"}],
+  text:[{part:1},"で受け取った文字を 変数",{p:"v"},"に入れる"],
+  code:(b)=>{ const n = varName(b.p.v); if (!n) return [];
+    return [`_rx = ${pv(b)}.readline()`, `if _rx:`, `    ${n} = _rx.decode().strip()`]; } }
+
+};
+
+/* ============================================================================
+   状態
+   ============================================================================ */
+let UID = 1;
+const uid = () => "u" + (UID++) + Math.floor(Math.random() * 900 + 100);
+
+const state = {
+  name: "はじめてのPico",
+  i2c: { sda: "GP0", scl: "GP1" },
+  parts: [],
+  vars: [],
+  setup: [],
+  loop: []
+};
+
+/* ------------------------------------------------------------ 参照ヘルパー */
+function partByUid(u){ return state.parts.find(p => p.uid === u) || null; }
+function partOf(b){ return partByUid(b.p && b.p._part); }
+function pv(b){ const P = partOf(b); return P ? P.name : "part"; }
+function varByUid(u){ return state.vars.find(v => v.uid === u) || null; }
+function varName(u){ const v = varByUid(u); return v ? v.name : null; }
+function partDef(p){ return PARTS[p.type]; }
+/* サーボの可動範囲。部品カードの設定に合わせる（180 / 270） */
+function servoRange(b){
+  const P = partOf(b);
+  const r = P && P.opts ? parseInt(P.opts.range, 10) : 180;
+  return isFinite(r) ? r : 180;
+}
+function callable(x, ...a){ return typeof x === "function" ? x(...a) : (x || []); }
+
+/* ------------------------------------------------------------ Python 生成 */
+function ind(lines){ return lines.map(l => "    " + l); }
+/* インデントの中身。コメントや空行だけだと Python が通らないので pass を足す */
+function bodyOf(lines){
+  const has = (lines || []).some(l => l.trim() && !l.trim().startsWith("#"));
+  return has ? lines : [...(lines || []), "pass"];
+}
+function num(x){
+  const n = Number(x);
+  if (!isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(4)));
+}
+function int(x){
+  const raw = (x && typeof x === "object" && "v" in x) ? x.v : x;
+  const n = parseInt(raw, 10);
+  return isFinite(n) ? String(n) : "0";
+}
+function pyStr(s){
+  return '"' + String(s == null ? "" : s)
+    .replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n").replace(/\r/g, "") + '"';
+}
+/* コメント行に埋める文字列。改行が入ると次の行がPythonコードとして解釈されて壊れる */
+function pyComment(s){
+  return String(s == null ? "" : s)
+    .replace(/\r/g, "")
+    .replace(/[\n\u2028\u2029]+/g, " ")
+    .trim();
+}
+
+/* ---- 名前として使えない語 ---------------------------------------------- */
+/* Python の予約語 */
+const NG_KEYWORD = ["False","None","True","and","as","assert","async","await","break","class",
+  "continue","def","del","elif","else","except","finally","for","from","global","if","import",
+  "in","is","lambda","nonlocal","not","or","pass","raise","return","try","while","with","yield"];
+/* 生成コードが import するモジュール名・別名 */
+const NG_MODULE = ["time","board","busio","digitalio","analogio","pwmio","touchio","rotaryio",
+  "microcontroller","random","math","displayio","i2cdisplaybus","terminalio","usb_hid",
+  "neopixel","adafruit_dht","adafruit_hcsr04","adafruit_mpu6050","adafruit_bme280",
+  "adafruit_displayio_ssd1306","adafruit_character_lcd","adafruit_hid","adafruit_motor",
+  "adafruit_display_text","label","servo_lib","motor_lib","character_lcd",
+  "Keyboard","Keycode","KeyboardLayoutUS","Mouse"];
+/* 生成コードが組み立てる名前 */
+const NG_GLOBAL = ["i2c"];
+/* うっかり潰すと困る組み込み */
+const NG_BUILTIN = ["print","int","float","str","bool","len","range","min","max","abs","round",
+  "list","dict","set","tuple","sum","sorted","type","input","open","bytes","id","map","filter"];
+const NG_NAMES = new Set([...NG_KEYWORD, ...NG_MODULE, ...NG_GLOBAL, ...NG_BUILTIN]);
+/* 部品の setup が `名前_○○` という補助変数を作るので、その分も衝突する */
+const NAME_SUFFIX = ["_pwm","_bus","_r","_g","_b","_set","_tone","_read","_layout","_last","_prev","_group","_label"];
+
+function nameProblem(n){
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
+    return `名前「${n}」は使えません。半角英字か _ で始め、あとは英数字と _ だけにしてください。`;
+  if (NG_KEYWORD.includes(n))
+    return `名前「${n}」は Python の予約語なので使えません。別の名前にしてください。`;
+  if (NG_MODULE.includes(n) || NG_GLOBAL.includes(n))
+    return `名前「${n}」はプログラムが内部で使う名前と重なります（${n} を上書きしてしまい、実行中に止まります）。別の名前にしてください。`;
+  if (NG_BUILTIN.includes(n))
+    return `名前「${n}」は Python の基本の関数と同じです。別の名前にしてください。`;
+  return null;
+}
+/* 使えない名前を、意味が分かる形に直す */
+function safeName(raw, taken){
+  let n = String(raw == null ? "" : raw).trim()
+    .replace(/[^A-Za-z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/_+$/, "");
+  if (!n) n = "name";
+  if (/^[0-9]/.test(n)) n = "_" + n;
+  if (NG_NAMES.has(n)) n = n + "_1";
+  const used = new Set(taken || []);
+  const reserved = new Set();
+  used.forEach(u => NAME_SUFFIX.forEach(s => reserved.add(u + s)));
+  let out = n, i = 2;
+  while (used.has(out) || reserved.has(out) || NG_NAMES.has(out)) { out = n + "_" + (i++); }
+  return out;
+}
+/* 全部の名前をまとめて直す（読み込み時・入力確定時に呼ぶ） */
+function fixAllNames(){
+  const taken = [];
+  let changed = false;
+  const fix = (o) => {
+    const s = safeName(o.name, taken);
+    if (s !== o.name) { o.name = s; changed = true; }
+    taken.push(s);
+  };
+  state.parts.forEach(fix);
+  state.vars.forEach(fix);
+  return changed;
+}
+function hex2rgb(h){
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(h || "#ffffff"));
+  const v = m ? parseInt(m[1], 16) : 0xffffff;
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+/* 値のもと（センサー・変数）を Python 式にする */
+function srcExpr(s){
+  if (!s) return null;
+  if (s.startsWith("v:")) { const n = varName(s.slice(2)); return n; }
+  if (s.startsWith("p:")) {
+    const [, pu, key] = s.split(":");
+    const P = partByUid(pu); if (!P) return null;
+    const rd = readsOf(P).find(r => r.k === key); if (!rd) return null;
+    return rd.expr(P.name);
+  }
+  return null;
+}
+function readsOf(P){
+  const d = PARTS[P.type]; if (!d) return [];
+  return callable(d.reads, P) || [];
+}
+/* 数値パラメータ（直接入力 or 値のもと） */
+function valExpr(pm){
+  if (pm && typeof pm === "object") {
+    if (pm.s) { const e = srcExpr(pm.s); if (e) return e; }
+    return num(pm.v);
+  }
+  return num(pm);
+}
+/* 条件式 */
+function condExpr(c){
+  if (!c || !c.src) return "True";
+  if (c.src.startsWith("v:")) {
+    const n = varName(c.src.slice(2));
+    if (!n) return "True";
+    return `${n} ${c.op || ">"} ${valExpr(c.val)}`;
+  }
+  const [, pu, key] = c.src.split(":");
+  const P = partByUid(pu); if (!P) return "True";
+  const rd = readsOf(P).find(r => r.k === key); if (!rd) return "True";
+  const e = rd.expr(P.name);
+  if (rd.kind === "bool") return c.op === "not" ? `not (${e})` : e;
+  return `${e} ${c.op || ">"} ${valExpr(c.val)}`;
+}
+
+/* ------------------------------------------------------------ ピンの使用状況 */
+function pinUsage(){
+  const map = {};
+  state.parts.forEach((P, idx) => {
+    const d = PARTS[P.type]; if (!d) return;
+    (d.pins || []).forEach(pd => {
+      const pin = P.pins[pd.k]; if (!pin) return;
+      (map[pin] = map[pin] || []).push({ part:P, label:pd.label, color:WIRE_COLORS[idx % WIRE_COLORS.length] });
+    });
+    if (d.bus === "i2c") {
+      [["sda","SDA"],["scl","SCL"]].forEach(([k, lb]) => {
+        const pin = state.i2c[k];
+        (map[pin] = map[pin] || []).push({ part:P, label:lb, color:WIRE_COLORS[idx % WIRE_COLORS.length], shared:true });
+      });
+    }
+  });
+  return map;
+}
+function partColor(P){
+  const i = state.parts.indexOf(P);
+  return WIRE_COLORS[(i < 0 ? 0 : i) % WIRE_COLORS.length];
+}
+function usesI2C(){ return state.parts.some(P => PARTS[P.type] && PARTS[P.type].bus === "i2c"); }
+
+/* ------------------------------------------------------------ コード生成本体 */
+function genList(list, g){
+  const out = [];
+  for (const b of list) {
+    const def = BLOCKS[b.type];
+    if (!def) continue;
+    if (def.part && !partOf(b)) {
+      g.warns.push(`「${def.label}」ブロックの部品が見つかりません。部品を選び直してください。`);
+      continue;
+    }
+    (callable(def.imports) || []).forEach(i => g.imports.add(i));
+    (callable(def.froms) || []).forEach(i => g.froms.add(i));
+    (callable(def.libs) || []).forEach(i => g.libs.add(i));
+    if (def.helper) { const h = def.helper(b); if (h) g.helpers.set(h.key, h.lines); }
+    (def.params || []).forEach(pm => {
+      if (pm.type === "var" && !varName(b.p[pm.k]))
+        g.warns.push(`「${def.label}」ブロックで使う変数が決まっていません。変数を追加して選んでください。`);
+    });
+
+    if (def.slots) {
+      const k1 = genList(b.c[def.slots[0].k] || [], g);
+      const k2 = def.slots[1] ? genList(b.c[def.slots[1].k] || [], g) : [];
+      out.push(...def.wrap(b, g, bodyOf(k1), bodyOf(k2)));
+    } else {
+      out.push(...(def.code(b, g) || []));
+    }
+  }
+  return out;
+}
+
+function generate(){
+  /* warns = 直したほうがよい / errs = そのままでは動かない（書き出しを止める） */
+  const g = { imports:new Set(), froms:new Set(), libs:new Set(),
+              helpers:new Map(), pre:[], warns:[], errs:[] };
+
+  /* --- 部品の初期化 --- */
+  const partLines = [];
+  state.parts.forEach(P => {
+    const d = PARTS[P.type]; if (!d) return;
+    (callable(d.imports, P) || []).forEach(i => g.imports.add(i));
+    (callable(d.froms, P) || []).forEach(i => g.froms.add(i));
+    (callable(d.libs, P) || []).forEach(i => g.libs.add(i));
+    (d.pre || []).forEach(l => { if (!g.pre.includes(l)) g.pre.push(l); });
+    const lines = callable(d.setup, P, P.name) || [];
+    if (lines.length) {
+      partLines.push(`# ${d.name}（${P.name}）`);
+      partLines.push(...lines);
+      partLines.push("");
+    }
+    (callable(d.helpers, P, P.name) || []).forEach(h => g.helpers.set(h.key, h.lines));
+  });
+
+  /* --- I2C バス --- */
+  const i2cLines = [];
+  if (usesI2C()) {
+    g.imports.add("board"); g.imports.add("busio");
+    /* Pico のピンは役割が固定。偶数GP=SDA / 奇数GP=SCL で、同じバス番号どうしでしか組めない */
+    const fs = pinI2C(state.i2c.sda) || "", fc = pinI2C(state.i2c.scl) || "";
+    if (!/SDA$/.test(fs)) {
+      g.errs.push(`SDA に ${state.i2c.sda} は使えません。SDA になれるのは番号が偶数のピンだけです（${i2cSDAList().slice(0, 6).join(" / ")} など）。`);
+    } else if (!/SCL$/.test(fc)) {
+      g.errs.push(`SCL に ${state.i2c.scl} は使えません。SCL になれるのは番号が奇数のピンだけです。SDA=${state.i2c.sda} なら ${i2cPartners(state.i2c.sda).join(" / ")} から選んでください。`);
+    } else if (fs.slice(0, 4) !== fc.slice(0, 4)) {
+      g.errs.push(`SDA=${state.i2c.sda}（${fs}）と SCL=${state.i2c.scl}（${fc}）は別のI2Cバスのピンなので組み合わせられません。SDA=${state.i2c.sda} なら ${i2cPartners(state.i2c.sda).join(" / ")} から選んでください。`);
+    }
+    i2cLines.push("# I2C（SDA / SCL を共有する部品ぜんぶで使います）");
+    i2cLines.push(`i2c = busio.I2C(board.${state.i2c.scl}, board.${state.i2c.sda})`);
+    i2cLines.push("");
+  }
+
+  /* --- 本体 --- */
+  const setupLines = genList(state.setup, g);
+  const loopLines  = genList(state.loop, g);
+
+  /* --- 変数 --- */
+  const varLines = [];
+  if (state.vars.length) {
+    varLines.push("# おぼえておく数");
+    state.vars.forEach(v => {
+      let init = v.init;
+      if (v.kind === "text") init = pyStr(v.init);
+      else if (v.kind === "bool") init = (String(v.init) === "true" || v.init === true) ? "True" : "False";
+      else init = num(v.init);
+      varLines.push(`${v.name} = ${init}`);
+    });
+    varLines.push("");
+  }
+
+  /* ループが空のときは下のプレースホルダが time.sleep(1) を使う。
+     そこまで含めて「time. が本当に出てくるか」で判定する */
+  const loopBody = bodyOf(loopLines.length ? loopLines
+    : ["# 左のパレットから動作ブロックを追加してください", "time.sleep(1)"]);
+  const helperText = [...g.helpers.values()].map(a => a.join("\n")).join("\n");
+  const scan = [partLines.join("\n"), helperText, setupLines.join("\n"), loopBody.join("\n")].join("\n");
+  if (/\btime\s*\./.test(scan)) g.imports.add("time");
+
+  /* --- import 文の整列 --- */
+  const order = ["time","board","busio","digitalio","analogio","pwmio","touchio","rotaryio",
+                 "microcontroller","random","math","displayio","i2cdisplaybus","terminalio",
+                 "usb_hid","neopixel","adafruit_dht","adafruit_hcsr04","adafruit_mpu6050"];
+  const imp = [...g.imports].sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+
+  /* --- 警告 --- */
+  const usage = pinUsage();
+  Object.entries(usage).forEach(([pin, list]) => {
+    const uniq = new Set(list.map(x => x.part.uid + "/" + x.label));
+    if (uniq.size > 1 && !list.every(x => x.shared)) {
+      g.warns.push(`ピン ${pin} を ${list.map(x => x.part.name).join(" と ")} が同時に使っています。どちらかを変えてください。`);
+    }
+  });
+  state.parts.forEach(P => {
+    const d = PARTS[P.type]; if (!d) return;
+    (d.pins || []).forEach(pd => {
+      if (pd.sel.kind === "adc" && !GP_ADC.includes(P.pins[pd.k])) {
+        g.warns.push(`${P.name} の「${pd.label}」はアナログ入力なので GP26 / GP27 / GP28 のどれかにしてください。`);
+      }
+    });
+  });
+  const names = state.parts.map(p => p.name).concat(state.vars.map(v => v.name));
+  names.forEach((n, i) => {
+    if (names.indexOf(n) !== i) g.errs.push(`名前「${n}」が重複しています。別の名前にしてください。`);
+    const prob = nameProblem(n);
+    if (prob) g.errs.push(prob);
+    /* 部品は 名前_pwm のような補助変数も作るので、そこも見る */
+    NAME_SUFFIX.forEach(s => {
+      if (names.indexOf(n + s) >= 0)
+        g.errs.push(`名前「${n + s}」は「${n}」が内部で作る名前と重なります。どちらかを変えてください。`);
+    });
+  });
+
+  /* --- 組み立て --- */
+  const L = [];
+  const stamp = new Date().toLocaleDateString("ja-JP");
+  L.push("# " + "-".repeat(46));
+  L.push(`# code.py : ${pyComment(state.name)}`);
+  L.push("# Raspberry Pi Pico + CircuitPython 9 以降");
+  L.push(`# PICO CIRCUITPYTHON BLOCK BUILDER (${stamp})`);
+  L.push("# " + "-".repeat(46));
+  L.push("");
+  imp.forEach(i => L.push(`import ${i}`));
+  [...g.froms].forEach(f => L.push(f));
+  L.push("");
+  if (g.pre.length) { L.push(...g.pre); L.push(""); }
+  if (i2cLines.length) L.push(...i2cLines);
+  if (partLines.length) { L.push("# --- つかう部品の準備 ---"); L.push(...partLines); }
+  if (g.helpers.size) {
+    L.push("# --- 便利な関数 ---");
+    g.helpers.forEach(lines => { L.push(...lines); L.push(""); });
+  }
+  if (varLines.length) L.push(...varLines);
+  if (setupLines.length) { L.push("# --- はじめに1回だけ ---"); L.push(...setupLines); L.push(""); }
+  L.push("# --- ずっとくり返す ---");
+  L.push("while True:");
+  L.push(...ind(loopBody));
+  L.push("");
+
+  return { code: L.join("\n"), libs:[...g.libs],
+           warns:[...new Set(g.warns)], errs:[...new Set(g.errs)],
+           imports: imp.concat([...g.froms]) };
+}
+
+/* ------------------------------------------------------------ 色付け表示 */
+const PY_KW = ["while","for","in","if","elif","else","def","return","import","from","as","not",
+               "and","or","break","continue","pass","global","try","except","True","False","None","with"];
+function highlight(src){
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const re = /(#[^\n]*)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(\b\d+\.?\d*\b|\b0x[0-9a-fA-F]+\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(src)) !== null) {
+    out += esc(src.slice(last, m.index));
+    if (m[1]) out += `<span class="c">${esc(m[1])}</span>`;
+    else if (m[2]) out += `<span class="s">${esc(m[2])}</span>`;
+    else if (m[3]) out += `<span class="n">${esc(m[3])}</span>`;
+    else {
+      const w = m[4];
+      if (PY_KW.includes(w)) out += `<span class="k">${w}</span>`;
+      else if (["print","int","str","len","range","round","max","min","abs","float"].includes(w)) out += `<span class="b">${w}</span>`;
+      else if (src[m.index + w.length] === "(") out += `<span class="f">${w}</span>`;
+      else out += w;
+    }
+    last = m.index + m[0].length;
+  }
+  out += esc(src.slice(last));
+  return out;
+}
+
+/* ============================================================================
+   画面描画
+   ============================================================================ */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const CATCOL = { flow:"#a98cf0", var:"#ef7fae" };
+
+function opts(list, cur){
+  return list.map(o => {
+    const l = Array.isArray(o) ? o[0] : o.l, v = Array.isArray(o) ? o[1] : o.v;
+    return `<option value="${esc(v)}"${String(v) === String(cur) ? " selected" : ""}>${esc(l)}</option>`;
+  }).join("");
+}
+
+/* 値のもと（センサー・変数）の選択肢 */
+function sourceOptions(cur, firstLabel){
+  let h = `<option value="">${esc(firstLabel)}</option>`;
+  const sens = [];
+  state.parts.forEach(P => readsOf(P).filter(r => r.kind !== "bool")
+    .forEach(r => sens.push([`${P.name} ${r.label}`, `p:${P.uid}:${r.k}`])));
+  if (sens.length) h += `<optgroup label="センサー">${opts(sens, cur)}</optgroup>`;
+  if (state.vars.length) h += `<optgroup label="変数">${opts(state.vars.map(v => [v.name, "v:" + v.uid]), cur)}</optgroup>`;
+  return h;
+}
+
+/* ---------------------------------------------------------------- パレット */
+let palTab = "parts", palQ = "";
+function renderPalette(){
+  const q = palQ.trim().toLowerCase();
+  const hit = (t) => !q || t.toLowerCase().includes(q);
+  let h = "";
+
+  if (palTab === "parts") {
+    const cats = ["出力","入力","表示","通信"];
+    cats.forEach(cat => {
+      const items = Object.entries(PARTS)
+        .filter(([, d]) => d.cat === cat && (hit(d.name) || hit(d.desc)));
+      if (!items.length) return;
+      h += `<div class="palgroup"><h3>${cat}</h3>`;
+      items.forEach(([id, d]) => {
+        h += `<button class="palitem" data-addpart="${id}" draggable="false" style="--c:var(${d.color})">
+          <span class="ic">${d.icon}</span>
+          <span class="tx"><b>${esc(d.name)}</b><small>${esc(d.desc)}</small></span></button>`;
+      });
+      h += `</div>`;
+    });
+    if (!h) h = `<div class="palgroup"><p style="font-size:12px;color:var(--silk-mute)">見つかりません</p></div>`;
+  } else {
+    const groups = [
+      ["基本", ["wait","wait_ms","print_out","comment"]],
+      ["くり返し・条件", ["repeat_n","if_then","if_else","while_cond","break_loop"]],
+      ["変数", ["var_set","var_change","var_random"]]
+    ];
+    groups.forEach(([title, ids]) => {
+      const items = ids.filter(id => BLOCKS[id] && (hit(BLOCKS[id].label) || hit(title)));
+      if (!items.length) return;
+      h += `<div class="palgroup"><h3>${title}</h3>`;
+      items.forEach(id => {
+        const d = BLOCKS[id];
+        h += `<button class="palitem" data-addblk="${id}" draggable="true" style="--c:${CATCOL[d.cat] || "#d9a441"}">
+          <span class="ic">${d.icon}</span><span class="tx"><b>${esc(d.label)}</b></span></button>`;
+      });
+      h += `</div>`;
+    });
+
+    state.parts.forEach(P => {
+      const d = PARTS[P.type]; if (!d) return;
+      const acts = (callable(d.acts, P) || []).filter(a => BLOCKS[a]);
+      if (!acts.length) return;
+      const shown = acts.filter(a => hit(BLOCKS[a].label) || hit(P.name) || hit(d.name));
+      if (!shown.length) return;
+      h += `<div class="palgroup"><h3>${esc(P.name)} — ${esc(d.name)}</h3>`;
+      shown.forEach(a => {
+        h += `<button class="palitem" data-addblk="${a}" data-part="${P.uid}" draggable="true" style="--c:${partColor(P)}">
+          <span class="ic">${BLOCKS[a].icon}</span><span class="tx"><b>${esc(BLOCKS[a].label)}</b></span></button>`;
+      });
+      h += `</div>`;
+    });
+
+    const withReads = state.parts.filter(P => readsOf(P).length);
+    if (withReads.length && !q) {
+      h += `<div class="palgroup"><h3>センサーの値の使い方</h3>
+        <p style="font-size:11px;color:var(--silk-mute);padding:0 2px 6px">
+        「もし〜なら」の条件や、数値のらんの横にあるメニューから、
+        ${esc(withReads.map(p => p.name).join(" / "))} の値をそのまま選べます。</p></div>`;
+    }
+    if (!state.parts.length) {
+      h += `<div class="palgroup"><p style="font-size:11.5px;color:var(--silk-mute);padding:2px">
+        「🔌 部品」タブから部品を追加すると、その部品を動かすブロックがここに増えます。</p></div>`;
+    }
+  }
+  $("#palBody").innerHTML = h;
+}
+
+/* ------------------------------------------------------------ 部品カード */
+function pinOptions(kind, cur, usedMap){
+  const list = kind === "adc" ? GP_ADC : GP_ALL;
+  return list.map(p => {
+    let lb = p;
+    if (GP_ADC.includes(p)) lb += ` (ADC${gpNum(p) - 26})`;
+    if (usedMap[p] && p !== cur) lb += " ●使用中";
+    return `<option value="${p}"${p === cur ? " selected" : ""}>${lb}</option>`;
+  }).join("");
+}
+
+function renderParts(){
+  const used = pinUsage();
+  let h = "";
+  if (usesI2C()) {
+    h += `<div class="partcard" style="--c:var(--trace)">
+      <div class="ph"><span class="ic">🔗</span><span class="ty" style="flex:1">
+        <b style="color:var(--trace)">I2Cの設定</b> — SDA/SCL は I2C部品すべてで共有します</span></div>
+      <div class="pb">
+        <label class="fld"><span>SDA</span><select class="pinsel" data-i2c="sda">${pinOptions("gp", state.i2c.sda, {})}</select></label>
+        <label class="fld"><span>SCL</span><select class="pinsel" data-i2c="scl">${pinOptions("gp", state.i2c.scl, {})}</select></label>
+        <span style="font-size:11px;color:var(--silk-mute)">${esc(pinI2C(state.i2c.sda) || "")} / ${esc(pinI2C(state.i2c.scl) || "")}</span>
+      </div></div>`;
+  }
+
+  state.parts.forEach(P => {
+    const d = PARTS[P.type]; if (!d) return;
+    const col = partColor(P);
+    h += `<div class="partcard" style="--c:${col}">
+      <div class="ph">
+        <span class="ic">${d.icon}</span>
+        <input class="nm" data-pname="${P.uid}" value="${esc(P.name)}" spellcheck="false" title="プログラムの中での名前">
+        <span class="ty">${esc(d.name)}</span>
+        <button class="iconbtn" data-pmove="${P.uid}|-1" title="上へ">▲</button>
+        <button class="iconbtn" data-pmove="${P.uid}|1" title="下へ">▼</button>
+        <button class="iconbtn del" data-pdel="${P.uid}" title="削除">✕</button>
+      </div><div class="pb">`;
+    (d.pins || []).forEach(pd => {
+      h += `<label class="fld"><span>${esc(pd.label)}</span>
+        <select class="pinsel" data-ppin="${P.uid}|${pd.k}">${pinOptions(pd.sel.kind, P.pins[pd.k], used)}</select></label>`;
+    });
+    (d.opts || []).forEach(od => {
+      const v = P.opts[od.k];
+      if (od.type === "bool") {
+        h += `<label class="fld"><input type="checkbox" data-popt="${P.uid}|${od.k}"${v ? " checked" : ""}><span>${esc(od.label)}</span></label>`;
+      } else if (od.type === "sel") {
+        h += `<label class="fld"><span>${esc(od.label)}</span>
+          <select data-popt="${P.uid}|${od.k}">${opts(od.options, v)}</select></label>`;
+      } else {
+        h += `<label class="fld"><span>${esc(od.label)}</span>
+          <input type="number" style="width:64px" data-popt="${P.uid}|${od.k}" value="${esc(v)}"
+          ${od.min != null ? `min="${od.min}"` : ""} ${od.max != null ? `max="${od.max}"` : ""}></label>`;
+      }
+    });
+    if (!(d.pins || []).length && !(d.opts || []).length) {
+      h += `<span style="font-size:11px;color:var(--silk-mute)">設定はありません（配線も不要です）</span>`;
+    }
+    h += `</div></div>`;
+  });
+
+  if (!state.parts.length) h = `<div class="emptyslot">左の「🔌 部品」から、つかう部品をえらんでください</div>`;
+  $("#partsList").innerHTML = h;
+}
+
+function renderVars(){
+  let h = "";
+  state.vars.forEach(v => {
+    h += `<div class="partcard" style="--c:var(--pink)"><div class="ph">
+      <span class="ic">📦</span>
+      <input class="nm" data-vname="${v.uid}" value="${esc(v.name)}" spellcheck="false">
+      <span class="ty" style="display:flex;gap:6px;align-items:center">
+        <span style="color:var(--silk-mute)">最初の値</span>
+        <input data-vinit="${v.uid}" value="${esc(v.init)}" style="width:80px">
+        <select data-vkind="${v.uid}">${opts([["数","num"],["文字","text"],["はい/いいえ","bool"]], v.kind)}</select>
+      </span>
+      <button class="iconbtn del" data-vdel="${v.uid}" title="削除">✕</button>
+    </div></div>`;
+  });
+  if (!state.vars.length) h = `<div class="emptyslot">点数やカウントを記録したいときに追加します（なくてもOK）</div>`;
+  $("#varsList").innerHTML = h;
+}
+
+/* ------------------------------------------------------------ ブロック描画 */
+function dz(root, parentUid, slot, index){
+  return `<div class="dz" data-dz="${root}|${parentUid || ""}|${slot || ""}|${index}"></div>`;
+}
+
+function renderParam(b, pm){
+  const key = `${b.uid}|${pm.k}`;
+  const val = b.p[pm.k];
+  switch (pm.type) {
+    case "num": case "int": {
+      const o = (val && typeof val === "object") ? val : { v: val, s: "" };
+      /* min / max は部品の設定によって変わることがあるので関数も許す */
+      const lo = typeof pm.min === "function" ? pm.min(b) : pm.min;
+      const hi = typeof pm.max === "function" ? pm.max(b) : pm.max;
+      let h = "";
+      if (!o.s) {
+        h += `<input type="number" data-bnum="${key}" value="${esc(o.v)}"
+          ${lo != null ? `min="${lo}"` : ""} ${hi != null ? `max="${hi}"` : ""}
+          step="${pm.type === "int" ? 1 : (pm.step || 1)}">`;
+      }
+      if (pm.src) h += `<select data-bsrc="${key}" title="センサーや変数の値を使う">${sourceOptions(o.s, "🔢 数値")}</select>`;
+      return h;
+    }
+    case "text":
+      return `<input type="text" data-btext="${key}" value="${esc(val)}" style="width:${pm.w || 120}px">`;
+    case "sel":
+      return `<select data-bsel="${key}">${opts(pm.options, val)}</select>`;
+    case "color":
+      return `<input type="color" data-bcol="${key}" value="${esc(val)}" style="width:34px;height:21px;padding:0;border:1px solid var(--edge)">`;
+    case "var": {
+      if (!state.vars.length) return `<span class="unit" style="color:var(--alert)">← 変数を追加してください</span>`;
+      return `<select data-bvar="${key}">${opts(state.vars.map(v => [v.name, v.uid]), val)}</select>`;
+    }
+    case "valsrc":
+      return `<select data-bvs="${key}">${sourceOptions(val, "（文字だけ）")}</select>`;
+    case "cond": {
+      const c = val || { src:"", op:">", val:{ v:0, s:"" } };
+      const boolSrc = [], numSrc = [];
+      state.parts.forEach(P => readsOf(P).forEach(r => {
+        (r.kind === "bool" ? boolSrc : numSrc).push([`${P.name} ${r.label}`, `p:${P.uid}:${r.k}`]);
+      }));
+      let sh = `<option value="">いつでも</option>`;
+      if (boolSrc.length) sh += `<optgroup label="スイッチ・センサー">${opts(boolSrc, c.src)}</optgroup>`;
+      if (numSrc.length) sh += `<optgroup label="数値センサー">${opts(numSrc, c.src)}</optgroup>`;
+      if (state.vars.length) sh += `<optgroup label="変数">${opts(state.vars.map(v => [v.name, "v:" + v.uid]), c.src)}</optgroup>`;
+      let h = `<select data-bcsrc="${b.uid}|${pm.k}">${sh}</select>`;
+      const kind = condKind(c.src);
+      if (kind === "bool") {
+        h += `<select data-bcop="${b.uid}|${pm.k}">${opts([["である",""],["でない","not"]], c.op)}</select>`;
+      } else if (kind === "num") {
+        h += `<select data-bcop="${b.uid}|${pm.k}">${opts([["＞ より大きい",">"],["≧ 以上",">="],["＜ より小さい","<"],["≦ 以下","<="],["＝ と同じ","=="],["≠ ちがう","!="]], c.op)}</select>`;
+        const o = c.val || { v:0, s:"" };
+        if (!o.s) h += `<input type="number" data-bcval="${b.uid}|${pm.k}" value="${esc(o.v)}" step="any">`;
+        h += `<select data-bcvsrc="${b.uid}|${pm.k}">${sourceOptions(o.s, "🔢 数値")}</select>`;
+      }
+      return h;
+    }
+  }
+  return "";
+}
+function condKind(src){
+  if (!src) return null;
+  if (src.startsWith("v:")) return "num";
+  const [, pu, key] = src.split(":");
+  const P = partByUid(pu); if (!P) return null;
+  const r = readsOf(P).find(x => x.k === key);
+  return r ? (r.kind === "bool" ? "bool" : "num") : null;
+}
+
+function renderBlock(b, root, parentUid, slot){
+  const d = BLOCKS[b.type];
+  if (!d) return "";
+  const P = d.part ? partOf(b) : null;
+  const col = d.part ? (P ? partColor(P) : "#e5544b") : (CATCOL[d.cat] || "#d9a441");
+  let inner = "";
+  (d.text || []).forEach(t => {
+    if (typeof t === "string") inner += `<span class="lab">${esc(t)}</span>`;
+    else if (t.part) {
+      const cands = state.parts.filter(x => d.part.includes(x.type));
+      inner += cands.length
+        ? `<select data-bpart="${b.uid}">${opts(cands.map(x => [x.name, x.uid]), b.p._part)}</select>`
+        : `<span class="lab" style="color:var(--alert)">部品がありません</span>`;
+    } else {
+      const pm = (d.params || []).find(x => x.k === t.p);
+      if (pm) inner += renderParam(b, pm);
+    }
+  });
+
+  let h = `<div class="blk" data-blk="${b.uid}" data-root="${root}" style="--c:${col}" draggable="true">
+    <div class="row"><span class="grip" title="ドラッグで移動">⠿</span><span class="ic">${d.icon}</span>
+    ${inner}
+    <span class="tools">
+      <button class="iconbtn" data-bmove="${b.uid}|-1" title="上へ">▲</button>
+      <button class="iconbtn" data-bmove="${b.uid}|1" title="下へ">▼</button>
+      <button class="iconbtn" data-bin="${b.uid}" title="ひとつ上のブロックの中に入れる">→</button>
+      <button class="iconbtn" data-bout="${b.uid}" title="外に出す">←</button>
+      <button class="iconbtn del" data-bdel="${b.uid}" title="削除">✕</button>
+    </span></div>`;
+
+  (d.slots || []).forEach(s => {
+    const kids = b.c[s.k] || [];
+    h += `<div class="slot">`;
+    if (s.label) h += `<div class="slotlab">${esc(s.label)}</div>`;
+    h += dz(root, b.uid, s.k, 0);
+    kids.forEach((k, i) => { h += renderBlock(k, root, b.uid, s.k) + dz(root, b.uid, s.k, i + 1); });
+    if (!kids.length) h += `<div class="emptyslot" style="padding:7px">ここにブロックを入れる</div>`;
+    h += `</div>`;
+  });
+  return h + `</div>`;
+}
+
+function renderProgram(){
+  [["setup", "#progSetup", "電源を入れた直後にやることを追加できます（なくてもOK）"],
+   ["loop", "#progLoop", "ここに置いたブロックが、電源を切るまでずっと動き続けます"]]
+  .forEach(([root, sel, empty]) => {
+    const list = state[root];
+    let h = dz(root, "", "", 0);
+    list.forEach((b, i) => { h += renderBlock(b, root, "", "") + dz(root, "", "", i + 1); });
+    if (!list.length) h += `<div class="emptyslot">${empty}</div>`;
+    $(sel).innerHTML = h;
+  });
+}
+
+/* ------------------------------------------------------------ 右カラム描画 */
+function renderRight(gen){
+  /* --- code.py --- */
+  $("#codeOut").innerHTML = highlight(gen.code);
+  $("#codeStat").textContent = gen.code.split("\n").length + " 行 / " +
+    (new TextEncoder().encode(gen.code).length) + " バイト";
+
+  /* --- 配線 --- */
+  let w = "";
+  if (gen.errs.length) {
+    w += `<div class="errbox"><b>✕ このままでは動きません</b>
+      <ul style="margin:4px 0 0 16px">${gen.errs.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+      <p style="margin:6px 0 0">直すまで code.py は書き出せません。</p></div>`;
+  }
+  if (gen.warns.length) {
+    w += `<div class="warnbox"><b>⚠ 直したいところ</b><ul style="margin:4px 0 0 16px">` +
+      gen.warns.map(x => `<li>${esc(x)}</li>`).join("") + `</ul></div>`;
+  } else if (!gen.errs.length && state.parts.length) {
+    w += `<div class="okbox">✓ ピンの重なりや設定のまちがいは見つかりませんでした</div>`;
+  }
+  w += `<div class="card"><h4>電源のきほん</h4>
+    <div class="kv"><b>3V3(OUT)</b><span>3.3V。ほとんどのセンサーはここ（40番ピンではなく36番）</span></div>
+    <div class="kv"><b>VBUS</b><span>USBからの5V。サーボ・NeoPixel・5Vモジュール用</span></div>
+    <div class="kv"><b>GND</b><span>マイナス側。部品とPicoで必ずつなぐ</span></div>
+    <p style="margin-top:6px">3V3(OUT) から取り出せるのは合計300mAくらいまでです。モーターやテープLEDは別電源にしてください。</p></div>`;
+
+  if (!state.parts.length) {
+    w += `<div class="card"><p>部品を追加すると、ここに1本ずつの配線手順が出ます。</p></div>`;
+  }
+  state.parts.forEach(P => {
+    const d = PARTS[P.type]; if (!d) return;
+    const col = partColor(P);
+    const lines = callable(d.wire, P) || [];
+    w += `<div class="card" style="border-left:3px solid ${col}">
+      <h4><span style="width:9px;height:9px;border-radius:2px;background:${col};display:inline-block"></span>
+      ${d.icon} ${esc(d.name)}（${esc(P.name)}）</h4>
+      <ul>${lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+  });
+  $("#wireOut").innerHTML = w;
+
+  /* --- ピン配置 --- */
+  const usage = pinUsage();
+  const row = (n, name, side) => {
+    const u = usage[name];
+    const cls = ["pinrow", side];
+    if (/^(VBUS|VSYS|3V3|ADC_VREF|RUN)/.test(name)) cls.push("pw");
+    if (/GND/.test(name)) cls.push("gnd");
+    if (u) { cls.push("used"); if (u.length > 1 && !u.every(x => x.shared)) cls.push("conf"); }
+    const tip = u ? u.map(x => `${x.part.name}:${x.label}`).join(" / ") : (pinFuncs(name).join(" · ") || name);
+    const lab = u ? `${name} → ${u.map(x => x.part.name).join(",")}` : name;
+    return `<div class="${cls.join(" ")}" style="--tc:${u ? u[0].color : "#3fbfa0"}" title="${esc(tip)}">
+      <span class="pad">${n}</span><span class="nm">${esc(lab)}</span></div>`;
+  };
+  let leftRows = "", rightRows = "";
+  PIN_LEFT.forEach((nm, i) => { leftRows += row(i + 1, nm, "l"); });
+  PIN_RIGHT.forEach((nm, i) => { rightRows += row(40 - i, nm, "r"); });
+
+  let pinsHtml = `<div class="boardwrap"><div class="pcb">
+      <div class="usb"></div>
+      <div class="chip">RP2040<br>Pico</div>
+      <div class="pinrows">
+        <div>${leftRows}</div><div>${rightRows}</div>
+      </div>
+      <div class="silk">RASPBERRY PI PICO</div>
+    </div></div>`;
+  if (state.parts.length) {
+    pinsHtml += `<div class="card"><h4>色のわりあて</h4><div class="legend">` +
+      state.parts.map(P => `<span><i style="background:${partColor(P)}"></i>${esc(P.name)}</span>`).join("") +
+      `</div></div>`;
+  }
+  const usedList = Object.entries(usage);
+  pinsHtml += `<div class="card"><h4>つかっているピン</h4>`;
+  if (!usedList.length) pinsHtml += `<p>まだありません。</p>`;
+  usedList.forEach(([pin, list]) => {
+    pinsHtml += `<div class="kv"><b>${esc(pin)}</b><span>${esc(list.map(x => x.part.name + " の " + x.label).join(" / "))}
+      <br><span style="color:var(--silk-mute);font-size:10.5px">${esc(pinFuncs(pin).join(" · "))}</span></span></div>`;
+  });
+  pinsHtml += `</div>
+  <div class="card"><h4>覚えておくと便利</h4>
+    <div class="kv"><b>アナログ</b><span>GP26 / GP27 / GP28 の3本だけ</span></div>
+    <div class="kv"><b>PWM</b><span>全部のGPで使えます（明るさ・サーボ・音）</span></div>
+    <div class="kv"><b>I2C</b><span>偶数GP=SDA、奇数GP=SCL がペア</span></div>
+    <div class="kv"><b>GP23/24/25</b><span>基板の内部用。外には出ていません</span></div>
+  </div>`;
+  $("#pinsOut").innerHTML = pinsHtml;
+
+  /* --- 準備 --- */
+  let lb = "";
+  lb += `<div class="card"><h4>1. CircuitPython を入れる</h4>
+    <ul><li>Picoの白いボタン(BOOTSEL)を押しながらUSBをつなぐ</li>
+    <li><code class="inl">RPI-RP2</code> というドライブが出てくる</li>
+    <li><a href="https://circuitpython.org/board/raspberry_pi_pico/" target="_blank" rel="noopener" style="color:var(--gold)">circuitpython.org</a> から .uf2 をダウンロードしてドライブにコピー</li>
+    <li>自動で再起動し、<code class="inl">CIRCUITPY</code> ドライブに変わる</li></ul>
+    <p style="margin-top:5px">このツールは CircuitPython 9 以降のかき方に合わせています。</p></div>`;
+
+  if (gen.libs.length) {
+    lb += `<div class="card"><h4>2. ライブラリを入れる</h4>
+      <p><a href="https://circuitpython.org/libraries" target="_blank" rel="noopener" style="color:var(--gold)">ライブラリバンドル</a>（本体と同じバージョン）をダウンロードし、
+      中の <code class="inl">lib</code> から次のファイルを <code class="inl">CIRCUITPY/lib/</code> にコピーします。</p>
+      <ul>${gen.libs.map(l => `<li><code class="inl">${esc(l)}</code></li>`).join("")}</ul>
+      <p style="margin-top:5px">末尾が <code class="inl">/</code> のものはフォルダごとコピーしてください。</p></div>`;
+  } else {
+    lb += `<div class="card"><h4>2. ライブラリ</h4>
+      <p>追加のライブラリは要りません。CircuitPython 本体だけで動きます。</p></div>`;
+  }
+
+  lb += `<div class="card"><h4>3. code.py を保存する</h4>
+    <ul><li>右上の <b>⬇ code.py</b> でファイルをダウンロード</li>
+    <li><code class="inl">CIRCUITPY</code> ドライブの一番上に置く（フォルダに入れない）</li>
+    <li>保存した瞬間に、Picoが自動でプログラムを動かします</li></ul></div>`;
+
+  lb += `<div class="card"><h4>4. うまく動かないとき</h4>
+    <ul><li>「シリアルに表示」ブロックの内容やエラーは、Mu Editor や Thonny のシリアル画面で見えます</li>
+    <li>画面に <code class="inl">ImportError</code> と出たら、2番のライブラリが足りていません</li>
+    <li>配線を変えるときは、いったんUSBを抜いてから</li>
+    <li>プログラムを止めたいときは、シリアル画面で <b>Ctrl+C</b></li></ul></div>`;
+
+  lb += `<div class="card"><h4>使っている機能</h4>
+    <div class="legend">${[...new Set(gen.imports.map(i => {
+      const m = /^from\s+([\w.]+)/.exec(i); return m ? m[1] : i.replace(/^import\s+/, "");
+    }))].map(i => `<code class="inl">${esc(i)}</code>`).join(" ")}</div></div>`;
+
+  $("#libsOut").innerHTML = lb;
+}
+
+/* ------------------------------------------------------------ 再描画 */
+let LAST = null, dirty = false;
+function refresh(full){
+  dirty = true;
+  if (full !== false) { renderPalette(); renderParts(); renderVars(); renderProgram(); }
+  LAST = generate();
+  renderRight(LAST);
+  const bad = LAST.errs.length > 0;
+  ["#btnDownload","#btnDl2","#btnCopy"].forEach(sel => {
+    const b = document.querySelector(sel); if (!b) return;
+    b.classList.toggle("blocked", bad);
+    b.title = bad ? "直すところが残っています（配線タブを見てください）" : "";
+  });
+}
+
+/* ============================================================================
+   作成・編集のしくみ
+   ============================================================================ */
+function uniqueName(base){
+  const taken = state.parts.map(p => p.name).concat(state.vars.map(v => v.name));
+  /* safeName がそのまま返す＝使える名前 */
+  for (let i = 1; i < 500; i++) {
+    const n = base + i;
+    if (safeName(n, taken) === n) return n;
+  }
+  return safeName(base, taken);
+}
+function mkPart(type, pins, optsOv, name){
+  const d = PARTS[type]; if (!d) return null;
+  const P = { uid:uid(), type, name: name || uniqueName(d.base), pins:{}, opts:{} };
+  (d.pins || []).forEach(pd => { P.pins[pd.k] = pd.sel.def; });
+  (d.opts || []).forEach(od => { P.opts[od.k] = od.def; });
+  if (pins) Object.assign(P.pins, pins);
+  if (optsOv) Object.assign(P.opts, optsOv);
+  return P;
+}
+function defaultParam(pm){
+  switch (pm.type) {
+    case "num": case "int": return { v: pm.def, s: "" };
+    case "cond": return { src:"", op:">", val:{ v:0, s:"" } };
+    case "var": return state.vars.length ? state.vars[0].uid : "";
+    case "valsrc": return "";
+    default: return pm.def != null ? pm.def : "";
+  }
+}
+function mkBlk(type, partUid, preset){
+  const d = BLOCKS[type]; if (!d) return null;
+  const b = { uid:uid(), type, p:{}, c:{} };
+  (d.params || []).forEach(pm => { b.p[pm.k] = defaultParam(pm); });
+  (d.slots || []).forEach(s => { b.c[s.k] = []; });
+  if (d.part) {
+    const cand = state.parts.find(x => x.uid === partUid) ||
+                 state.parts.find(x => d.part.includes(x.type));
+    b.p._part = cand ? cand.uid : null;
+  }
+  if (preset) Object.entries(preset).forEach(([k, v]) => {
+    const pm = (d.params || []).find(x => x.k === k);
+    if (pm && (pm.type === "num" || pm.type === "int"))
+      b.p[k] = (v && typeof v === "object") ? v : { v, s:"" };
+    else b.p[k] = v;
+  });
+  return b;
+}
+
+/* ------------------------------------------------------------ ツリー操作 */
+function ctxOf(u, list, parent, slot, root){
+  for (let i = 0; i < list.length; i++) {
+    const b = list[i];
+    if (b.uid === u) return { list, i, parent, slot, root, b };
+    const d = BLOCKS[b.type];
+    for (const s of (d && d.slots) || []) {
+      const r = ctxOf(u, b.c[s.k] || [], b, s.k, root);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+function findBlk(u){
+  return ctxOf(u, state.setup, null, "", "setup") || ctxOf(u, state.loop, null, "", "loop");
+}
+function listAt(root, parentUid, slot){
+  if (!parentUid) return state[root];
+  const c = findBlk(parentUid);
+  if (!c) return state[root];
+  c.b.c[slot] = c.b.c[slot] || [];
+  return c.b.c[slot];
+}
+function isInside(ancestorUid, uid2){
+  const c = findBlk(ancestorUid); if (!c) return false;
+  const walk = (list) => list.some(b =>
+    b.uid === uid2 || Object.values(b.c || {}).some(l => walk(l || [])));
+  return Object.values(c.b.c || {}).some(l => walk(l || []));
+}
+function pluck(u){
+  const c = findBlk(u); if (!c) return null;
+  return c.list.splice(c.i, 1)[0];
+}
+
+/* ------------------------------------------------------------ 挿入位置 */
+let selUid = null;
+function addBlock(type, partUid){
+  const b = mkBlk(type, partUid); if (!b) return;
+  const sel = selUid ? findBlk(selUid) : null;
+  if (sel) {
+    const sd = BLOCKS[sel.b.type];
+    if (sd && sd.slots) { sel.b.c[sd.slots[0].k].push(b); }
+    else sel.list.splice(sel.i + 1, 0, b);
+  } else {
+    state.loop.push(b);
+  }
+  selUid = b.uid;
+  refresh();
+  setTimeout(() => {
+    const el = document.querySelector(`[data-blk="${b.uid}"]`);
+    if (el) el.scrollIntoView({ block:"nearest", behavior:"smooth" });
+  }, 0);
+}
+function addPart(type){
+  const d = PARTS[type]; if (!d) return;
+  const P = mkPart(type);
+  const used = new Set(Object.keys(pinUsage()));
+
+  /* I2C部品を最初に入れるとき、SDA/SCL が空いていなければペアごと引っ越す */
+  if (d.bus === "i2c" && !usesI2C() && (used.has(state.i2c.sda) || used.has(state.i2c.scl))) {
+    for (let n = 0; n <= 20; n += 2) {
+      const sda = "GP" + n, scl = "GP" + (n + 1);
+      if (!used.has(sda) && !used.has(scl)) { state.i2c.sda = sda; state.i2c.scl = scl; break; }
+    }
+  }
+  if (d.bus === "i2c") { used.add(state.i2c.sda); used.add(state.i2c.scl); }
+
+  /* 空いているピンを順にわりあてる */
+  (d.pins || []).forEach(pd => {
+    const list = pd.sel.kind === "adc" ? GP_ADC : GP_ALL;
+    let pin = P.pins[pd.k];
+    if (used.has(pin)) pin = list.find(x => !used.has(x)) || pin;
+    P.pins[pd.k] = pin;
+    used.add(pin);
+  });
+
+  state.parts.push(P);
+  palTab = "blocks";
+  document.querySelectorAll("#palTabs button").forEach(x => x.classList.toggle("on", x.dataset.pal === "blocks"));
+  refresh();
+  toast(`${d.name} を追加しました。動作ブロックが左に出ています`);
+}
+
+/* ============================================================================
+   イベント
+   ============================================================================ */
+function toast(msg, ms){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove("on"), ms || 2200);
+}
+/* 右カラムのタブを開く。スマホでは右カラム自体も出す */
+function showTab(name){
+  const btn = document.querySelector(`#rTabs button[data-pane="${name}"]`);
+  if (!btn) return;
+  document.querySelectorAll("#rTabs button").forEach(x => x.classList.toggle("on", x === btn));
+  document.querySelectorAll(".rpane").forEach(p => p.classList.toggle("on", p.id === "pane-" + name));
+  const nav = document.querySelector('#mobNav button[data-col="right"]');
+  if (nav && getComputedStyle(document.getElementById("mobNav")).display !== "none") nav.click();
+}
+function pathParam(str){ const [u, k] = str.split("|"); return { b: findBlk(u), k }; }
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-addpart],[data-addblk],[data-pdel],[data-pmove],[data-vdel]," +
+    "[data-bdel],[data-bmove],[data-bin],[data-bout],[data-blk],[data-pal],[data-pane],[data-col]");
+  if (!t) return;
+
+  if (t.dataset.addpart) { addPart(t.dataset.addpart); return; }
+  if (t.dataset.addblk) { addBlock(t.dataset.addblk, t.dataset.part); return; }
+
+  if (t.dataset.pdel) {
+    const P = partByUid(t.dataset.pdel);
+    if (P && confirm(`${P.name} を削除します。この部品を使うブロックも消えます。よろしいですか？`)) {
+      const purge = (list) => list.filter(b => {
+        if (b.p && b.p._part === P.uid) return false;
+        Object.keys(b.c || {}).forEach(k => { b.c[k] = purge(b.c[k] || []); });
+        return true;
+      });
+      state.setup = purge(state.setup); state.loop = purge(state.loop);
+      state.parts = state.parts.filter(x => x.uid !== P.uid);
+      refresh();
+    }
+    return;
+  }
+  if (t.dataset.pmove) {
+    const [u, d] = t.dataset.pmove.split("|");
+    const i = state.parts.findIndex(x => x.uid === u), j = i + Number(d);
+    if (i >= 0 && j >= 0 && j < state.parts.length) {
+      const [x] = state.parts.splice(i, 1); state.parts.splice(j, 0, x); refresh();
+    }
+    return;
+  }
+  if (t.dataset.vdel) {
+    state.vars = state.vars.filter(v => v.uid !== t.dataset.vdel); refresh(); return;
+  }
+  if (t.dataset.bdel) {
+    pluck(t.dataset.bdel); if (selUid === t.dataset.bdel) selUid = null; refresh(); return;
+  }
+  if (t.dataset.bmove) {
+    const [u, d] = t.dataset.bmove.split("|");
+    const c = findBlk(u); if (!c) return;
+    const j = c.i + Number(d);
+    if (j >= 0 && j < c.list.length) {
+      const [x] = c.list.splice(c.i, 1); c.list.splice(j, 0, x); refresh();
+    }
+    return;
+  }
+  if (t.dataset.bin) {
+    const c = findBlk(t.dataset.bin); if (!c || c.i === 0) { toast("すぐ上に「くり返す」や「もし〜なら」があると、中に入れられます"); return; }
+    const prev = c.list[c.i - 1], pd = BLOCKS[prev.type];
+    if (!pd || !pd.slots) { toast("すぐ上のブロックは、中にブロックを入れられません"); return; }
+    const x = c.list.splice(c.i, 1)[0];
+    prev.c[pd.slots[0].k].push(x); refresh(); return;
+  }
+  if (t.dataset.bout) {
+    const c = findBlk(t.dataset.bout); if (!c || !c.parent) { toast("これ以上は外に出せません"); return; }
+    const pc = findBlk(c.parent.uid);
+    const x = c.list.splice(c.i, 1)[0];
+    pc.list.splice(pc.i + 1, 0, x); refresh(); return;
+  }
+  if (t.dataset.pal) {
+    palTab = t.dataset.pal;
+    document.querySelectorAll("#palTabs button").forEach(x => x.classList.toggle("on", x === t));
+    renderPalette(); return;
+  }
+  if (t.dataset.pane) {
+    document.querySelectorAll("#rTabs button").forEach(x => x.classList.toggle("on", x === t));
+    document.querySelectorAll(".rpane").forEach(p => p.classList.toggle("on", p.id === "pane-" + t.dataset.pane));
+    return;
+  }
+  if (t.dataset.col) {
+    document.querySelectorAll("#mobNav button").forEach(x => x.classList.toggle("on", x === t));
+    ["left","mid","right"].forEach(c =>
+      document.getElementById("col" + c[0].toUpperCase() + c.slice(1)).classList.toggle("show", c === t.dataset.col));
+    return;
+  }
+  if (t.dataset.blk) {
+    if (e.target.closest("input,select,textarea")) return;
+    selUid = (selUid === t.dataset.blk) ? null : t.dataset.blk;
+    document.querySelectorAll(".blk").forEach(x => x.classList.toggle("sel", x.dataset.blk === selUid));
+  }
+});
+
+/* --- 値の変更 --- */
+function onEdit(e, isChange){
+  const el = e.target, ds = el.dataset;
+  let full = false, hit = true;
+
+  if (ds.pname) {
+    const P = partByUid(ds.pname);
+    if (P) {
+      P.name = el.value.trim();
+      /* 入力を確定した時点で、Pythonの名前として使える形に直す */
+      if (isChange) {
+        const taken = state.parts.filter(x => x !== P).map(x => x.name).concat(state.vars.map(v => v.name));
+        const s = safeName(P.name, taken);
+        if (s !== P.name) { P.name = s; toast(`名前を「${s}」に直しました`); }
+      }
+    }
+    full = isChange;
+  }
+  else if (ds.ppin) { const [u, k] = ds.ppin.split("|"); const P = partByUid(u); if (P) P.pins[k] = el.value; full = true; }
+  else if (ds.popt) {
+    const [u, k] = ds.popt.split("|"); const P = partByUid(u);
+    if (P) P.opts[k] = (el.type === "checkbox") ? el.checked
+      : (el.type === "number" ? Number(el.value) : el.value);
+    full = true;
+  }
+  else if (ds.i2c) { state.i2c[ds.i2c] = el.value; full = true; }
+  else if (ds.vname) {
+    const v = varByUid(ds.vname);
+    if (v) {
+      v.name = el.value.trim();
+      if (isChange) {
+        const taken = state.parts.map(x => x.name).concat(state.vars.filter(x => x !== v).map(x => x.name));
+        const s = safeName(v.name, taken);
+        if (s !== v.name) { v.name = s; toast(`名前を「${s}」に直しました`); }
+      }
+    }
+    full = isChange;
+  }
+  else if (ds.vinit) { const v = varByUid(ds.vinit); if (v) v.init = el.value; }
+  else if (ds.vkind) { const v = varByUid(ds.vkind); if (v) v.kind = el.value; full = true; }
+  else if (ds.bnum) { const { b, k } = pathParam(ds.bnum); if (b) b.b.p[k].v = Number(el.value); }
+  else if (ds.bsrc) { const { b, k } = pathParam(ds.bsrc); if (b) { b.b.p[k].s = el.value; full = true; } }
+  else if (ds.btext) { const { b, k } = pathParam(ds.btext); if (b) b.b.p[k] = el.value; }
+  else if (ds.bsel) { const { b, k } = pathParam(ds.bsel); if (b) b.b.p[k] = el.value; }
+  else if (ds.bcol) { const { b, k } = pathParam(ds.bcol); if (b) b.b.p[k] = el.value; }
+  else if (ds.bvar) { const { b, k } = pathParam(ds.bvar); if (b) b.b.p[k] = el.value; }
+  else if (ds.bvs) { const { b, k } = pathParam(ds.bvs); if (b) b.b.p[k] = el.value; }
+  else if (ds.bpart) { const c = findBlk(ds.bpart); if (c) { c.b.p._part = el.value; full = true; } }
+  else if (ds.bcsrc) { const { b, k } = pathParam(ds.bcsrc); if (b) {
+      const c = b.b.p[k]; c.src = el.value;
+      c.op = condKind(c.src) === "bool" ? "" : ">";
+      full = true; } }
+  else if (ds.bcop) { const { b, k } = pathParam(ds.bcop); if (b) b.b.p[k].op = el.value; }
+  else if (ds.bcval) { const { b, k } = pathParam(ds.bcval); if (b) b.b.p[k].val.v = Number(el.value); }
+  else if (ds.bcvsrc) { const { b, k } = pathParam(ds.bcvsrc); if (b) { b.b.p[k].val.s = el.value; full = true; } }
+  else if (el.id === "projName") { state.name = el.value; }
+  else hit = false;
+
+  if (hit) refresh(full);
+}
+document.addEventListener("input", (e) => onEdit(e, false));
+document.addEventListener("change", (e) => onEdit(e, true));
+
+/* --- ドラッグ＆ドロップ --- */
+let dragUid = null, dragNew = null;
+document.addEventListener("dragstart", (e) => {
+  const pal = e.target.closest("[data-addblk]");
+  if (pal) { dragNew = { type: pal.dataset.addblk, part: pal.dataset.part }; dragUid = null;
+             e.dataTransfer.effectAllowed = "copy"; try { e.dataTransfer.setData("text/plain", "new"); } catch (x) {} return; }
+  const blk = e.target.closest(".blk");
+  if (blk) { dragUid = blk.dataset.blk; dragNew = null; blk.classList.add("dragging");
+             e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragUid); } catch (x) {} }
+});
+document.addEventListener("dragend", () => {
+  dragUid = null; dragNew = null;
+  document.querySelectorAll(".dragging").forEach(x => x.classList.remove("dragging"));
+  document.querySelectorAll(".dz.over").forEach(x => x.classList.remove("over"));
+});
+document.addEventListener("dragover", (e) => {
+  const z = e.target.closest(".dz"); if (!z || (!dragUid && !dragNew)) return;
+  e.preventDefault();
+  document.querySelectorAll(".dz.over").forEach(x => x.classList.remove("over"));
+  z.classList.add("over");
+});
+document.addEventListener("drop", (e) => {
+  const z = e.target.closest(".dz"); if (!z) return;
+  e.preventDefault();
+  const [root, parentUid, slot, idxs] = z.dataset.dz.split("|");
+  let index = Number(idxs);
+  if (dragNew) {
+    const b = mkBlk(dragNew.type, dragNew.part);
+    if (b) { listAt(root, parentUid, slot).splice(index, 0, b); selUid = b.uid; }
+  } else if (dragUid) {
+    if (parentUid && (parentUid === dragUid || isInside(dragUid, parentUid))) { toast("自分の中には入れられません"); return; }
+    const c = findBlk(dragUid);
+    const same = c && c.list === listAt(root, parentUid, slot);
+    if (same && c.i < index) index--;
+    const b = pluck(dragUid);
+    if (b) listAt(root, parentUid, slot).splice(index, 0, b);
+  }
+  dragUid = null; dragNew = null;
+  refresh();
+});
+
+/* ============================================================================
+   サンプル（テンプレート）
+   ============================================================================ */
+function resetProject(name){
+  state.name = name; state.parts = []; state.vars = []; state.setup = []; state.loop = [];
+  state.i2c = { sda:"GP0", scl:"GP1" };
+  selUid = null;
+  $("#projName").value = name;
+}
+const push = (a, x) => { a.push(x); return x; };
+
+const TEMPLATES = [
+{ id:"blink", name:"Lチカ（配線なし）", desc:"Pico基板のLEDを1秒ごとに点滅。まずはこれから",
+  build(){
+    resetProject("Lチカ");
+    const led = push(state.parts, mkPart("onboard_led"));
+    state.loop.push(mkBlk("out_blink", led.uid, { on:0.5, off:0.5 }));
+  } },
+
+{ id:"button_led", name:"ボタンでLED", desc:"押している間だけLEDが光る",
+  build(){
+    resetProject("ボタンでLED");
+    const led = push(state.parts, mkPart("led", { pin:"GP15" }));
+    const btn = push(state.parts, mkPart("button", { pin:"GP14" }));
+    const ife = mkBlk("if_else", null, { c:{ src:`p:${btn.uid}:pressed`, op:"", val:{ v:0, s:"" } } });
+    ife.c.do = [mkBlk("out_on", led.uid)];
+    ife.c.els = [mkBlk("out_off", led.uid)];
+    state.loop.push(ife);
+  } },
+
+{ id:"dimmer", name:"つまみで明るさ調整", desc:"可変抵抗を回すとLEDの明るさが変わる",
+  build(){
+    resetProject("LED調光");
+    const pot = push(state.parts, mkPart("potentiometer", { pin:"GP26" }));
+    const led = push(state.parts, mkPart("led", { pin:"GP15" }, { pwm:true }));
+    state.loop.push(mkBlk("pwm_set", led.uid, { x:{ v:50, s:`p:${pot.uid}:pct` } }));
+    state.loop.push(mkBlk("print_out", null, { t:"明るさ ", v:`p:${pot.uid}:pct` }));
+    state.loop.push(mkBlk("wait", null, { sec:0.1 }));
+  } },
+
+{ id:"night", name:"暗くなったら点灯", desc:"光センサーで自動の常夜灯",
+  build(){
+    resetProject("自動常夜灯");
+    const cds = push(state.parts, mkPart("cds", { pin:"GP27" }));
+    const led = push(state.parts, mkPart("led", { pin:"GP15" }));
+    const ife = mkBlk("if_else", null, { c:{ src:`p:${cds.uid}:pct`, op:"<", val:{ v:30, s:"" } } });
+    ife.c.do = [mkBlk("out_on", led.uid)];
+    ife.c.els = [mkBlk("out_off", led.uid)];
+    state.loop.push(ife);
+    state.loop.push(mkBlk("print_out", null, { t:"明るさ ", v:`p:${cds.uid}:pct` }));
+    state.loop.push(mkBlk("wait", null, { sec:0.5 }));
+  } },
+
+{ id:"alarm", name:"近づくと鳴る", desc:"距離センサー＋ブザーの警報",
+  build(){
+    resetProject("距離アラーム");
+    const son = push(state.parts, mkPart("hcsr04", { trig:"GP2", echo:"GP3" }));
+    const bz = push(state.parts, mkPart("buzzer", { pin:"GP14" }));
+    const iff = mkBlk("if_then", null, { c:{ src:`p:${son.uid}:cm`, op:"<", val:{ v:20, s:"" } } });
+    iff.c.do = [mkBlk("buzz_note", bz.uid, { n:"880", sec:0.15 })];
+    state.loop.push(mkBlk("print_out", null, { t:"距離(cm) ", v:`p:${son.uid}:cm` }));
+    state.loop.push(iff);
+    state.loop.push(mkBlk("wait", null, { sec:0.2 }));
+  } },
+
+{ id:"rainbow", name:"NeoPixelレインボー", desc:"テープLEDを虹色に流す",
+  build(){
+    resetProject("レインボー");
+    const np = push(state.parts, mkPart("neopixel", { pin:"GP0" }, { num:8, bright:25 }));
+    state.loop.push(mkBlk("np_rainbow", np.uid, { s:4 }));
+    state.loop.push(mkBlk("wait", null, { sec:0.03 }));
+  } },
+
+{ id:"thermo", name:"温湿度をOLEDに表示", desc:"DHT11 と 0.96インチOLED",
+  build(){
+    resetProject("温湿度計");
+    const dht = push(state.parts, mkPart("dht", { pin:"GP16" }));
+    const ol = push(state.parts, mkPart("oled"));
+    state.loop.push(mkBlk("oled_text", ol.uid, { l:1, t:"Temp: ", v:`p:${dht.uid}:temp` }));
+    state.loop.push(mkBlk("oled_text", ol.uid, { l:2, t:"Hum : ", v:`p:${dht.uid}:hum` }));
+    state.loop.push(mkBlk("wait", null, { sec:2 }));
+  } },
+
+{ id:"counter", name:"押した回数を数える", desc:"変数の使い方が分かるサンプル",
+  build(){
+    resetProject("カウンター");
+    const btn = push(state.parts, mkPart("button", { pin:"GP14" }));
+    state.vars.push({ uid:uid(), name:"count", init:"0", kind:"num" });
+    const v = state.vars[0];
+    state.loop.push(mkBlk("btn_wait", btn.uid));
+    state.loop.push(mkBlk("var_change", null, { v:v.uid, x:1 }));
+    state.loop.push(mkBlk("print_out", null, { t:"回数 ", v:`v:${v.uid}` }));
+    state.loop.push(mkBlk("btn_wait_release", btn.uid));
+    state.loop.push(mkBlk("wait", null, { sec:0.05 }));
+  } },
+
+{ id:"macro", name:"ボタンでPCに入力", desc:"Picoをキーボードにする（USB HID）",
+  build(){
+    resetProject("マクロキー");
+    const btn = push(state.parts, mkPart("button", { pin:"GP14" }));
+    const kb = push(state.parts, mkPart("hid_keyboard"));
+    state.loop.push(mkBlk("btn_wait", btn.uid));
+    state.loop.push(mkBlk("hid_text", kb.uid, { t:"Hello from Pico!" }));
+    state.loop.push(mkBlk("btn_wait_release", btn.uid));
+    state.loop.push(mkBlk("wait", null, { sec:0.2 }));
+  } },
+
+{ id:"servo_knob", name:"つまみでサーボを動かす", desc:"アナログ値をそのまま角度に",
+  build(){
+    resetProject("サーボ操作");
+    const pot = push(state.parts, mkPart("potentiometer", { pin:"GP26" }));
+    const sv = push(state.parts, mkPart("servo", { pin:"GP15" }));
+    state.loop.push(mkBlk("servo_angle", sv.uid, { a:{ v:90, s:`p:${pot.uid}:deg` } }));
+    state.loop.push(mkBlk("wait", null, { sec:0.05 }));
+  } }
+];
+
+/* ============================================================================
+   モーダル / 入出力
+   ============================================================================ */
+function openModal(title, body, foot){
+  $("#modalTitle").textContent = title;
+  $("#modalBody").innerHTML = body;
+  $("#modalFoot").innerHTML = foot || `<button class="tbtn" data-mclose>閉じる</button>`;
+  $("#modalMask").classList.add("on");
+}
+function closeModal(){ $("#modalMask").classList.remove("on"); }
+$("#modalClose").addEventListener("click", closeModal);
+$("#modalMask").addEventListener("click", (e) => {
+  if (e.target === $("#modalMask") || e.target.closest("[data-mclose]")) closeModal();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+$("#btnTemplates").addEventListener("click", () => {
+  const body = `<p style="margin-bottom:9px">今のプログラムは置きかえられます。</p><div class="tplgrid">` +
+    TEMPLATES.map(t => `<button class="tpl" data-tpl="${t.id}"><b>${esc(t.name)}</b><small>${esc(t.desc)}</small></button>`).join("") +
+    `</div>`;
+  openModal("サンプルから始める", body);
+  $("#modalBody").querySelectorAll("[data-tpl]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const t = TEMPLATES.find(x => x.id === btn.dataset.tpl);
+      if (t) { t.build(); refresh(); closeModal(); toast(`「${t.name}」を読み込みました`); }
+    });
+  });
+});
+
+$("#btnHelp").addEventListener("click", () => {
+  openModal("使い方", `
+   <div class="card"><h4>3ステップで完成</h4>
+     <ul><li><b>1.</b> 左の「🔌 部品」から、つかう部品を選ぶ（ピン番号は後から変えられます）</li>
+     <li><b>2.</b> 左の「🧩 動作」に、その部品を動かすブロックが出てくるので押して並べる</li>
+     <li><b>3.</b> 右上の <b>⬇ code.py</b> でダウンロードし、CIRCUITPYドライブに置く</li></ul></div>
+   <div class="card"><h4>ブロックの並べかえ</h4>
+     <ul><li>▲▼ … 上下に動かす</li>
+     <li>→ … すぐ上の「くり返す」「もし〜なら」の中に入れる</li>
+     <li>← … 中から外に出す</li>
+     <li>⠿ をつかんでドラッグしても動かせます</li>
+     <li>ブロックを押して選んでおくと、次に追加したブロックがそのすぐ下に入ります。
+     「くり返す」「もし〜なら」を選んでいるときは、その中に入ります</li></ul></div>
+   <div class="card"><h4>センサーの値をつかう</h4>
+     <p>数値を入れるらんの横にあるメニューから、センサーの値や変数をえらべます。
+     「もし〜なら」の条件でも同じように選べます。</p></div>
+   <div class="card"><h4>保存と再開</h4>
+     <p><b>💾 保存</b> で作業中の内容をファイルに書き出し、<b>📂 開く</b> で読み込めます。
+     ページを閉じると内容は消えるので、途中でも保存しておくと安心です。</p></div>
+   <div class="card"><h4>安全のために</h4>
+     <ul><li>配線を変えるときは、必ずUSBを抜く</li>
+     <li>LEDには抵抗を、モーターにはドライバを入れる</li>
+     <li>1本のピンから取り出せる電流は約12mAまで</li></ul></div>`);
+});
+
+function download(filename, text){
+  const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+/* そのままでは動かないコードを持ち出させない */
+function blockIfBroken(g){
+  if (!g.errs.length) return false;
+  showTab("wire");
+  toast("このままでは動きません：" + g.errs[0], 4200);
+  return true;
+}
+function doDownload(){
+  const g = generate();
+  if (blockIfBroken(g)) return;
+  download("code.py", g.code);
+  toast(g.warns.length ? "code.py を書き出しました（配線タブに注意点があります）" : "code.py を書き出しました");
+}
+$("#btnDownload").addEventListener("click", doDownload);
+$("#btnDl2").addEventListener("click", doDownload);
+
+$("#btnCopy").addEventListener("click", async () => {
+  const g = generate();
+  if (blockIfBroken(g)) return;
+  const txt = g.code;
+  try { await navigator.clipboard.writeText(txt); toast("コピーしました"); }
+  catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("コピーしました"); }
+    catch (x) { toast("コピーできませんでした。手で選択してください"); }
+    ta.remove();
+  }
+});
+
+$("#btnSave").addEventListener("click", () => {
+  const data = { app:"PICO CIRCUITPYTHON BLOCK BUILDER", version:1, name:state.name, i2c:state.i2c,
+                 parts:state.parts, vars:state.vars, setup:state.setup, loop:state.loop };
+  const safe = (state.name || "project").replace(/[\\/:*?"<>|]/g, "_");
+  download(safe + ".picoblocks.json", JSON.stringify(data, null, 1));
+  toast("プロジェクトを保存しました");
+});
+$("#btnLoad").addEventListener("click", () => $("#fileInput").click());
+$("#fileInput").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!d || !Array.isArray(d.parts)) throw new Error("形式がちがいます");
+      state.name = d.name || "読み込んだプロジェクト";
+      state.i2c = d.i2c || { sda:"GP0", scl:"GP1" };
+      state.parts = d.parts; state.vars = d.vars || [];
+      state.setup = d.setup || []; state.loop = d.loop || [];
+      selUid = null;
+      $("#projName").value = state.name;
+      /* 古いファイルや手で書き換えたファイルに使えない名前が入っていても直す */
+      const fixed = fixAllNames();
+      refresh();
+      toast(fixed ? "読み込みました（使えない名前を直しました）" : "読み込みました");
+    } catch (err) {
+      toast("読み込めませんでした：" + err.message);
+    }
+    e.target.value = "";
+  };
+  r.readAsText(f);
+});
+
+$("#btnAddVar").addEventListener("click", () => {
+  state.vars.push({ uid:uid(), name:uniqueName("value"), init:"0", kind:"num" });
+  refresh(); toast("変数を追加しました");
+});
+$("#btnClearProg").addEventListener("click", () => {
+  if (confirm("部品もブロックも、すべて消します。よろしいですか？")) {
+    resetProject("あたらしいプロジェクト"); refresh();
+  }
+});
+$("#palSearch").addEventListener("input", (e) => { palQ = e.target.value; renderPalette(); });
+
+window.addEventListener("beforeunload", (e) => {
+  if (dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
+/* ============================================================================
+   起動
+   ============================================================================ */
+TEMPLATES[0].build();
+refresh();
+dirty = false;
+</script>
+</body>
+</html>
